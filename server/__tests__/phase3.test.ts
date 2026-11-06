@@ -195,6 +195,8 @@ describe('accounts, swap and replace', () => {
       expect(res.status).toBe(201)
       expect(res.body.faculty.code).toBe(`TEST-PROV-${stamp}`)
       expect(res.body.user).toMatchObject({ email, role: 'faculty' })
+        // The bcrypt hash must never leave the server.
+        expect(res.body.user.password).toBeUndefined()
       createdFacultyIds.push(res.body.faculty.id)
       createdUserIds.push(res.body.user.id)
 

@@ -948,7 +948,9 @@ router.post('/faculty', async (req: AuthRequest, res: Response) => {
           facultyId: faculty.id,
           mustChangePassword: true,
         },
-      })
+          // Never return the password hash to the client.
+          select: { id: true, email: true, name: true, role: true, facultyId: true, mustChangePassword: true },
+        })
     }
 
     await tx.auditLog.create({
