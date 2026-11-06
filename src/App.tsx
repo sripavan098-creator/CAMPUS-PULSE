@@ -1,6 +1,5 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { storageService } from './services/storageService';
 import { useMobileApp } from './hooks/useMobileApp';
 
 // Layouts
@@ -120,10 +119,6 @@ const AppRoutes: React.FC = () => {
 };
 
 export const App: React.FC = () => {
-  useEffect(() => {
-    storageService.initialize();
-  }, []);
-
   return (
     <BrowserRouter>
       <AppRoutes />

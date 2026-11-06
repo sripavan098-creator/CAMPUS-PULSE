@@ -1,32 +1,45 @@
-import React from 'react';
-import { storageService } from '../../services/storageService';
-import { timetableService } from '../../services/timetableService';
-import { BarChart3, TrendingUp, Download, Printer } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { apiService } from '../../services/apiService';
+import { useApiResource } from '../../hooks/useApiResource';
+import { Department, Room, TimetableEntry } from '../../types';
+import { Printer } from 'lucide-react';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
 
 export const AdminReportsPage: React.FC = () => {
-  const metrics = timetableService.getCampusMetrics();
-  const departments = storageService.getDepartments();
-  const rooms = storageService.getRooms();
+  const { data: departments, loading: dLoading } = useApiResource<Department[]>(
+    () => apiService.getDepartments(),
+    []
+  );
+  const { data: rooms } = useApiResource<Room[]>(() => apiService.getRooms(), []);
+  const { data: entries, loading: eLoading } = useApiResource<TimetableEntry[]>(
+    () => apiService.getTimetables(),
+    []
+  );
 
-  const deptUtilization = departments.map(d => {
-    const dRooms = rooms.filter(r => r.departmentId === d.id);
-    return {
+  const loading = dLoading || eLoading;
+
+  const metrics = useMemo(() => {
+    const totalSlots = Math.max(1, rooms.length * 6 * 8);
+    const labEntries = entries.filter(e => e.isLab).length;
+    const weeklyLabHours = Math.round((labEntries * 50) / 60);
+    const occupancy = Math.min(100, Math.round((entries.length / totalSlots) * 100));
+
+    const byDept = new Map<string, number>();
+    for (const e of entries) {
+      if (!e.departmentId) continue;
+      byDept.set(e.departmentId, (byDept.get(e.departmentId) ?? 0) + 1);
+    }
+
+    const deptUtilization = departments.map(d => ({
       name: d.code,
-      totalRooms: dRooms.length,
-      utilizationRate: Math.floor(Math.random() * 25) + 65 // Simulated utilization %
-    };
-  });
+      scheduledPeriods: byDept.get(d.id) ?? 0,
+      utilizationRate: Math.min(100, Math.round(((byDept.get(d.id) ?? 0) / totalSlots) * 100 * departments.length))
+    }));
+
+    return { totalSlots, weeklyLabHours, occupancy, deptUtilization };
+  }, [departments, rooms, entries]);
 
   return (
     <div className="space-y-8">
@@ -47,41 +60,41 @@ export const AdminReportsPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Top 3 KPI Cards */}
+      {loading && <p className="text-xs text-slate-500">Computing live metrics…</p>}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
-          <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Peak Utilization Rate</span>
-          <p className="text-3xl font-extrabold text-blue-700 font-mono">78.4%</p>
-          <p className="text-xs text-slate-500 mt-1">Average classroom occupancy during peak hours (10:00 - 14:00).</p>
+          <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Campus Occupancy</span>
+          <p className="text-3xl font-extrabold text-blue-700 font-mono">{metrics.occupancy}%</p>
+          <p className="text-xs text-slate-500 mt-1">Scheduled periods vs. total weekly room capacity.</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
           <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Weekly Lab Hours</span>
-          <p className="text-3xl font-extrabold text-teal-700 font-mono">142 Hrs</p>
-          <p className="text-xs text-slate-500 mt-1">Total practical laboratory sessions conducted across campus.</p>
+          <p className="text-3xl font-extrabold text-teal-700 font-mono">{metrics.weeklyLabHours} Hrs</p>
+          <p className="text-xs text-slate-500 mt-1">Total practical laboratory sessions across campus.</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
-          <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Timetable Conflict Free Rate</span>
-          <p className="text-3xl font-extrabold text-emerald-700 font-mono">100%</p>
-          <p className="text-xs text-slate-500 mt-1">Zero overlaps detected by algorithmic timetable validator.</p>
+          <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Scheduled Periods</span>
+          <p className="text-3xl font-extrabold text-emerald-700 font-mono">{entries.length}</p>
+          <p className="text-xs text-slate-500 mt-1">Published teaching periods in the current dataset.</p>
         </div>
       </div>
 
-      {/* Department Utilization Bar Chart */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
         <div>
-          <h3 className="text-base font-bold text-[#142B4A]">Departmental Classroom Utilization Rate (%)</h3>
-          <p className="text-xs text-slate-500">Effective space utilization percentage per academic department.</p>
+          <h3 className="text-base font-bold text-[#142B4A]">Departmental Scheduled Periods</h3>
+          <p className="text-xs text-slate-500">Teaching periods allocated per academic department.</p>
         </div>
 
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={deptUtilization} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <BarChart data={metrics.deptUtilization} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
+              <YAxis tick={{ fontSize: 11 }} />
               <Tooltip />
-              <Bar dataKey="utilizationRate" fill="#2563EB" name="Utilization %" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="scheduledPeriods" fill="#2563EB" name="Periods" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -89,4 +102,3 @@ export const AdminReportsPage: React.FC = () => {
     </div>
   );
 };
-

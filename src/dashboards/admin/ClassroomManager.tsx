@@ -1,49 +1,32 @@
-import React, { useState, useEffect } from 'react';
-import {
-  DoorOpen,
-  Plus,
-  Trash2,
-  Edit,
-  Building2,
-  Layers,
-  Search,
-  Filter,
-  CheckCircle,
-  Eye,
-  X,
-  Save,
-  Sparkles
-} from 'lucide-react';
-import { storageService } from '../../services/storageService';
-import { Room, Building, Floor, RoomType } from '../../types';
+import React, { useState } from 'react';
+import { Plus, Trash2, Edit, Search, X } from 'lucide-react';
+import { apiService } from '../../services/apiService';
+import { useApiResource } from '../../hooks/useApiResource';
+import { Room, Building, Floor, Department, RoomType } from '../../types';
 
 export const ClassroomManager: React.FC = () => {
-  const [rooms, setRooms] = useState<Room[]>(storageService.getRooms());
-  const [buildings, setBuildings] = useState<Building[]>(storageService.getBuildings());
-  const [floors, setFloors] = useState<Floor[]>(storageService.getFloors());
-  const [departments, setDepartments] = useState(storageService.getDepartments());
+  const { data: rooms, loading, error, reload } = useApiResource<Room[]>(
+    () => apiService.getRooms(),
+    []
+  );
+  const { data: buildings } = useApiResource<Building[]>(() => apiService.getBuildings(), []);
+  const { data: floors } = useApiResource<Floor[]>(() => apiService.getFloors(), []);
+  const { data: departments } = useApiResource<Department[]>(() => apiService.getDepartments(), []);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBldgFilter, setSelectedBldgFilter] = useState('');
-
-  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  // Form fields
   const [roomNumber, setRoomNumber] = useState('');
   const [roomName, setRoomName] = useState('');
-  const [buildingId, setBuildingId] = useState(buildings[0]?.id || '');
-  const [floorId, setFloorId] = useState(floors[0]?.id || '');
+  const [buildingId, setBuildingId] = useState('');
+  const [floorId, setFloorId] = useState('');
   const [roomType, setRoomType] = useState<RoomType>('classroom');
-  const [departmentId, setDepartmentId] = useState(departments[0]?.id || '');
+  const [departmentId, setDepartmentId] = useState('');
   const [capacity, setCapacity] = useState(70);
-  const [featuresInput, setFeaturesInput] = useState('Projector, AC, Smart Board');
-
-  const reload = () => {
-    setRooms(storageService.getRooms());
-    setFloors(storageService.getFloors());
-  };
 
   const filteredFloors = floors.filter(f => f.buildingId === buildingId);
 
@@ -53,11 +36,11 @@ export const ClassroomManager: React.FC = () => {
     setRoomName('');
     const defaultBldg = buildings[0]?.id || '';
     setBuildingId(defaultBldg);
-    const bldgFlrs = floors.filter(f => f.buildingId === defaultBldg);
-    setFloorId(bldgFlrs[0]?.id || '');
+    setFloorId(floors.find(f => f.buildingId === defaultBldg)?.id || '');
     setRoomType('classroom');
+    setDepartmentId(departments[0]?.id || '');
     setCapacity(70);
-    setFeaturesInput('Projector, AC, Smart Board');
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -68,75 +51,66 @@ export const ClassroomManager: React.FC = () => {
     setBuildingId(r.buildingId);
     setFloorId(r.floorId);
     setRoomType(r.type);
-    setDepartmentId(r.departmentId);
+    setDepartmentId(r.departmentId || '');
     setCapacity(r.capacity);
-    setFeaturesInput(r.features?.join(', ') || '');
+    setFormError(null);
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this room? It will be removed from blueprints, floor lists, and availability searches.')) {
-      storageService.deleteRoom(id);
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this room? It will be removed from blueprints, floor lists, and availability searches.')) return;
+    setBusy(true);
+    try {
+      await apiService.deleteRoom(id);
       reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete room');
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const features = featuresInput.split(',').map(s => s.trim()).filter(Boolean);
-
-    if (editingRoom) {
-      const updated: Room = {
-        ...editingRoom,
-        roomNumber,
-        name: roomName,
-        buildingId,
-        floorId,
-        type: roomType,
-        departmentId,
-        capacity: Number(capacity),
-        features
-      };
-      storageService.updateRoom(updated);
-    } else {
-      const newRoom: Room = {
-        id: `room-${Date.now()}`,
-        roomNumber,
-        name: roomName,
-        buildingId,
-        floorId,
-        type: roomType,
-        departmentId,
-        capacity: Number(capacity),
-        features,
-        isSchedulable: true,
-        blueprintPosition: {
-          x: Math.floor(Math.random() * 60) + 10,
-          y: Math.floor(Math.random() * 40) + 10,
-          width: 22,
-          height: 35
-        }
-      };
-      storageService.addRoom(newRoom);
+    setBusy(true);
+    setFormError(null);
+    try {
+      if (editingRoom) {
+        await apiService.updateRoom(editingRoom.id, {
+          blockId: buildingId,
+          floorId,
+          type: roomType,
+          capacity: Number(capacity)
+        });
+      } else {
+        await apiService.createRoom({
+          id: roomNumber,
+          blockId: buildingId,
+          floorId,
+          type: roomType,
+          capacity: Number(capacity)
+        });
+      }
+      setIsModalOpen(false);
+      reload();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to save room');
+    } finally {
+      setBusy(false);
     }
-
-    setIsModalOpen(false);
-    reload();
   };
 
   const displayedRooms = rooms.filter(r => {
     if (selectedBldgFilter && r.buildingId !== selectedBldgFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      return r.roomNumber.toLowerCase().includes(q) || r.name.toLowerCase().includes(q);
+      return r.roomNumber.toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q);
     }
     return true;
   });
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <h1 className="text-2xl font-extrabold text-[#142B4A]">Campus Classroom Management</h1>
@@ -154,7 +128,13 @@ export const ClassroomManager: React.FC = () => {
         </button>
       </div>
 
-      {/* Filter Row */}
+      {loading && <p className="text-xs text-slate-500">Loading rooms…</p>}
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          Could not load rooms: {error}
+        </p>
+      )}
+
       <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
         <div className="flex items-center gap-3">
           <label className="text-xs font-bold text-slate-600">Building:</label>
@@ -182,7 +162,6 @@ export const ClassroomManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -194,14 +173,13 @@ export const ClassroomManager: React.FC = () => {
                 <th className="py-3 px-4">Floor</th>
                 <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4">Capacity</th>
-                <th className="py-3 px-4">Features</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {displayedRooms.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     No matching classrooms found.
                   </td>
                 </tr>
@@ -222,9 +200,6 @@ export const ClassroomManager: React.FC = () => {
                         <span className="capitalize font-semibold text-slate-700">{r.type}</span>
                       </td>
                       <td className="py-3 px-4 font-bold text-slate-800">{r.capacity} seats</td>
-                      <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
-                        {r.features?.join(', ') || 'Standard Class'}
-                      </td>
                       <td className="py-3 px-4 text-right space-x-1">
                         <button
                           onClick={() => openEditModal(r)}
@@ -234,8 +209,9 @@ export const ClassroomManager: React.FC = () => {
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                         <button
+                          disabled={busy}
                           onClick={() => handleDelete(r.id)}
-                          className="p-1.5 text-slate-500 hover:text-red-600 rounded-lg hover:bg-red-50"
+                          className="p-1.5 text-slate-500 hover:text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50"
                           title="Delete Room"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -250,9 +226,8 @@ export const ClassroomManager: React.FC = () => {
         </div>
       </div>
 
-      {/* CREATE / EDIT MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden">
             <div className="bg-[#142B4A] text-white p-5 flex items-center justify-between">
               <h3 className="text-base font-bold">
@@ -264,6 +239,9 @@ export const ClassroomManager: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+              {formError && (
+                <p className="text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formError}</p>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 uppercase mb-1">Room Number (e.g. N-204)</label>
@@ -272,8 +250,9 @@ export const ClassroomManager: React.FC = () => {
                     value={roomNumber}
                     onChange={e => setRoomNumber(e.target.value)}
                     required
+                    disabled={!!editingRoom}
                     placeholder="e.g. N-204"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold disabled:opacity-60"
                   />
                 </div>
                 <div>
@@ -294,7 +273,6 @@ export const ClassroomManager: React.FC = () => {
                   type="text"
                   value={roomName}
                   onChange={e => setRoomName(e.target.value)}
-                  required
                   placeholder="e.g. Smart Interactive Lecture Hall N-204"
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold"
                 />
@@ -308,7 +286,7 @@ export const ClassroomManager: React.FC = () => {
                     onChange={e => {
                       setBuildingId(e.target.value);
                       const bflrs = floors.filter(f => f.buildingId === e.target.value);
-                      if (bflrs.length > 0) setFloorId(bflrs[0].id);
+                      setFloorId(bflrs[0]?.id || '');
                     }}
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold"
                   >
@@ -337,7 +315,7 @@ export const ClassroomManager: React.FC = () => {
                   <label className="block font-bold text-slate-700 uppercase mb-1">Room Type</label>
                   <select
                     value={roomType}
-                    onChange={e => setRoomType(e.target.value as any)}
+                    onChange={e => setRoomType(e.target.value as RoomType)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold"
                   >
                     <option value="classroom">Classroom</option>
@@ -361,17 +339,6 @@ export const ClassroomManager: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Features (comma separated)</label>
-                <input
-                  type="text"
-                  value={featuresInput}
-                  onChange={e => setFeaturesInput(e.target.value)}
-                  placeholder="Projector, Central AC, Smart Board, Ethernet"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium"
-                />
-              </div>
-
               <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -382,7 +349,8 @@ export const ClassroomManager: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-blue-700 text-white rounded-xl font-bold"
+                  disabled={busy}
+                  className="px-5 py-2 bg-[#2563EB] hover:bg-blue-700 text-white rounded-xl font-bold disabled:opacity-50"
                 >
                   Save Room
                 </button>
@@ -394,4 +362,3 @@ export const ClassroomManager: React.FC = () => {
     </div>
   );
 };
-

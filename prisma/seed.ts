@@ -456,36 +456,98 @@ async function main() {
       groupMap.set(g.name, rec.id)
     }
 
-    // 11.4 Insert Entries for newly added groups
+    // 11.4 Upsert Entries. Runs as an update-or-insert so a redeploy over an
+    // already-populated database still backfills faculty/room/subject instead
+    // of skipping every existing row.
+    // Faculty names from the source legend are free text and may list several
+    // people per slot; the first name is used as the primary instructor and
+    // generic labels like "CSE Faculty (CN)" stay unlinked.
+    const facultyIdByName = new Map<string, string>()
+    let facultyCount = 0
+    const facultyIdFor = async (raw: string | null | undefined): Promise<string | null> => {
+      if (!raw) return null
+      const primary = raw.split(/[,;]/)[0].replace(/\s+/g, ' ').trim().replace(/[.]+$/, '')
+      if (!primary || /faculty/i.test(primary) || primary.length < 4) return null
+      const cached = facultyIdByName.get(primary)
+      if (cached) return cached
+      const code = `fac-${primary.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}`
+      const rec = await prisma.faculty.upsert({
+        where: { code },
+        update: { name: primary },
+        create: { code, name: primary }
+      })
+      facultyIdByName.set(primary, rec.id)
+      facultyCount++
+      return rec.id
+    }
+
     let newEntriesCount = 0
+    let updatedEntriesCount = 0
     for (const entry of compiledData.entries) {
       const gId = groupMap.get(entry.group)
       if (!gId) continue
 
-      const count = await prisma.entry.count({
-        where: { groupId: gId, day: entry.day, startTime: entry.startTime }
+      const rId = entry.room ? entry.room.trim().toUpperCase() : null
+      const roomId = rId && rId !== 'MOBILE' ? rId : null
+      const facultyId = await facultyIdFor(entry.faculty)
+      const subject = entry.subject ?? null
+
+      const existing = await prisma.entry.findFirst({
+        where: { groupId: gId, day: entry.day, startTime: entry.startTime },
+        select: { id: true, facultyId: true, roomId: true, subject: true }
       })
-      if (count === 0) {
-        const rId = entry.room ? entry.room.trim().toUpperCase() : null
+
+      if (!existing) {
         await prisma.entry.create({
           data: {
             sourceFileId: sourceFile.id,
             groupId: gId,
-            roomId: rId && rId !== 'MOBILE' ? rId : null,
-            facultyId: null,
+            roomId,
+            facultyId,
             day: entry.day,
             startTime: entry.startTime,
             endTime: entry.endTime,
-            subject: entry.subject,
+            subject,
             entryType: entry.entryType || 'class',
             is_mock: false,
             is_live: true
           }
         })
         newEntriesCount++
+      } else {
+        // Subject and faculty are derived from the workbook and are safe to
+        // refresh. Rooms are deliberately left alone: the curated demo rows
+        // carry hand-assigned rooms that the raw grid data must not clobber.
+        const patch: { facultyId?: string; subject?: string } = {}
+        if (facultyId && existing.facultyId !== facultyId) patch.facultyId = facultyId
+        if (subject && existing.subject !== subject) patch.subject = subject
+        if (Object.keys(patch).length > 0) {
+          await prisma.entry.update({ where: { id: existing.id }, data: patch })
+          updatedEntriesCount++
+        }
       }
     }
-    console.log(`- Ingested ${compiledData.groups.length} university groups and ${newEntriesCount} entries`)
+    console.log(`- Ingested ${compiledData.groups.length} university groups, ${newEntriesCount} new and ${updatedEntriesCount} refreshed entries`)
+    console.log(`- Linked ${facultyCount} distinct faculty from source legends`)
+  }
+
+  // Academic year + semester rows. The admin Academic Year and Semester tabs
+  // read these, and their Activate buttons update them, so they must exist in
+  // the database rather than only in the SPA's bundled demo constants.
+  const academicYears = [
+    { id: 'ay-2026-27', yearName: '2026-2027', startDate: '2026-06-01', endDate: '2027-05-31', isActive: true, isArchived: false },
+    { id: 'ay-2025-26', yearName: '2025-2026', startDate: '2025-06-01', endDate: '2026-05-31', isActive: false, isArchived: true },
+  ]
+  for (const y of academicYears) {
+    await prisma.academicYear.upsert({ where: { id: y.id }, update: {}, create: y })
+  }
+
+  const semesters = [
+    { id: 'sem-odd-2026', academicYearId: 'ay-2026-27', semesterNumber: 1, name: 'Semester I (Odd)', type: 'ODD', startDate: '2026-06-01', endDate: '2026-11-30', isActive: false },
+    { id: 'sem-even-2026', academicYearId: 'ay-2026-27', semesterNumber: 2, name: 'Semester II (Even)', type: 'EVEN', startDate: '2026-12-01', endDate: '2027-05-31', isActive: true },
+  ]
+  for (const sem of semesters) {
+    await prisma.semester.upsert({ where: { id: sem.id }, update: {}, create: sem })
   }
 
   console.log(`Database seeded successfully!`)

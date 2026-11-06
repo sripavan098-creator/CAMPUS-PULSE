@@ -16,6 +16,7 @@ import {
 import { Room, Building, Floor } from '../../types';
 import { timetableService } from '../../services/timetableService';
 import { storageService } from '../../services/storageService';
+import { useLookups } from '../../hooks/useLookups';
 import { formatTime12h, TIME_SLOTS } from '../../utils/timeUtils';
 
 interface RoomDetailModalProps {
@@ -40,10 +41,7 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
   const statusInfo = timetableService.getRoomStatus(room.id, selectedDay as any, selectedTime);
   const fullSchedule = timetableService.getRoomSchedule(room.id, selectedDay as any);
 
-  const departments = storageService.getDepartments();
-  const subjects = storageService.getSubjects();
-  const facultyList = storageService.getFaculty();
-  const sections = storageService.getSections();
+  const { departments, subjects, faculty: facultyList, sections } = useLookups();
 
   const dept = departments.find(d => d.id === room.departmentId);
   const getSubj = (id?: string) => subjects.find(s => s.id === id);

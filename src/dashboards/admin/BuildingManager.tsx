@@ -1,20 +1,31 @@
-import React, { useState } from 'react';
-import { storageService } from '../../services/storageService';
+import React from 'react';
+import { apiService } from '../../services/apiService';
+import { useApiResource } from '../../hooks/useApiResource';
 import { Building } from '../../types';
-import { Building2, Layers, Plus, ExternalLink, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const BuildingManager: React.FC = () => {
-  const [buildings, setBuildings] = useState<Building[]>(storageService.getBuildings());
+  const { data: buildings, loading, error } = useApiResource<Building[]>(
+    () => apiService.getBuildings(),
+    []
+  );
 
   return (
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-5">
         <h1 className="text-2xl font-extrabold text-[#142B4A]">Campus Blocks & Buildings Registry</h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Five primary university buildings mapped with exact campus photography and registered floor hierarchies.
+          Primary university buildings mapped with exact campus photography and registered floor hierarchies.
         </p>
       </div>
+
+      {loading && <p className="text-xs text-slate-500">Loading buildings…</p>}
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          Could not load buildings: {error}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {buildings.map(bldg => (
@@ -30,7 +41,8 @@ export const BuildingManager: React.FC = () => {
               <h3 className="font-bold text-base text-slate-900">{bldg.name}</h3>
               <p className="text-xs text-slate-600 line-clamp-2">{bldg.description}</p>
               <div className="text-xs text-slate-500 pt-1">
-                <span>Floors: <strong>{bldg.totalFloors}</strong></span> • <span>Departments: <strong>{bldg.departments.join(', ')}</strong></span>
+                <span>Floors: <strong>{bldg.totalFloors}</strong></span> •{' '}
+                <span>Departments: <strong>{bldg.departments.join(', ')}</strong></span>
               </div>
             </div>
 
@@ -46,4 +58,3 @@ export const BuildingManager: React.FC = () => {
     </div>
   );
 };
-
