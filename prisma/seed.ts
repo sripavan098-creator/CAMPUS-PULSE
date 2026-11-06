@@ -64,7 +64,7 @@ async function main() {
     })
   }
   // U Block (Aryabhata)
-  for (const n of [1, 2, 4]) {
+  for (const n of [1, 2, 3, 4]) {
     await prisma.floor.upsert({
       where: { id: `U-${n}` },
       update: {},
@@ -72,7 +72,7 @@ async function main() {
     })
   }
   // P Block
-  for (const n of [2, 3, 4]) {
+  for (const n of [1, 2, 3, 4]) {
     await prisma.floor.upsert({
       where: { id: `P-${n}` },
       update: {},
@@ -390,17 +390,52 @@ async function main() {
       if (!rawRoom || rawRoom === 'MOBILE') continue
       const rId = rawRoom.trim().toUpperCase()
       let blk = 'A'
-      if (rId.startsWith('N-') || rId.startsWith('NB')) blk = 'N'
-      else if (rId.startsWith('H-') || rId.startsWith('VSF') || rId.startsWith('VTF') || rId.startsWith('VGF') || rId.startsWith('VFF')) blk = 'H'
-      else if (rId.startsWith('U-')) blk = 'U'
-      else if (rId.startsWith('P-') || rId.startsWith('VPTF') || rId.startsWith('VPSF')) blk = 'P'
+      let flrId: string | null = null
+
+      if (rId.startsWith('N-') || rId.startsWith('NB')) {
+        blk = 'N'
+        const digitMatch = rId.match(/(?:N-|NB)(\d)/)
+        if (digitMatch) flrId = `N-${digitMatch[1]}`
+      } else if (rId.startsWith('H-') || rId.startsWith('VSF') || rId.startsWith('VTF') || rId.startsWith('VGF') || rId.startsWith('VFF')) {
+        blk = 'H'
+        if (rId.startsWith('VGF')) flrId = 'H-0'
+        else if (rId.startsWith('VFF')) flrId = 'H-1'
+        else if (rId.startsWith('VSF')) flrId = 'H-2'
+        else if (rId.startsWith('VTF')) flrId = 'H-3'
+      } else if (rId.startsWith('U-') || rId.startsWith('AFF') || rId.startsWith('ASF') || rId.startsWith('ATF')) {
+        blk = 'U'
+        if (rId.startsWith('AFF')) flrId = 'U-1'
+        else if (rId.startsWith('ASF')) flrId = 'U-2'
+        else if (rId.startsWith('ATF')) flrId = 'U-3'
+      } else if (rId.startsWith('P-') || rId.startsWith('VPTF') || rId.startsWith('VPSF') || rId.startsWith('VPFTF')) {
+        blk = 'P'
+        if (rId.startsWith('VPSF')) flrId = 'P-2'
+        else if (rId.startsWith('VPTF')) flrId = 'P-3'
+        else if (rId.startsWith('VPFTF')) flrId = 'P-4'
+      } else if (rId.startsWith('VBFFTF') || rId.startsWith('VBFFT')) {
+        blk = 'A'
+        flrId = 'A-5'
+      } else if (rId.startsWith('VBFTF')) {
+        blk = 'A'
+        flrId = 'A-4'
+      } else if (rId.startsWith('VBTF') || rId.startsWith('VBT')) {
+        blk = 'A'
+        flrId = 'A-3'
+      } else if (rId.startsWith('VBSF')) {
+        blk = 'A'
+        flrId = 'A-2'
+      } else if (rId.startsWith('VBFF')) {
+        blk = 'A'
+        flrId = 'A-1'
+      }
 
       await prisma.room.upsert({
         where: { id: rId },
-        update: {},
+        update: { floorId: flrId },
         create: {
           id: rId,
           blockId: blk,
+          floorId: flrId,
           confidence: 'confirmed',
           type: rId.includes('LAB') ? 'Laboratory' : 'Classroom',
           capacity: 60
