@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
-import { storageService } from '../../services/storageService';
-import { Room } from '../../types';
-import { FlaskConical, Plus, Search, MapPin, Cpu, Eye } from 'lucide-react';
+import React from 'react';
+import { apiService } from '../../services/apiService';
+import { useApiResource } from '../../hooks/useApiResource';
+import { Room, Building, Floor, Department } from '../../types';
+import { MapPin, Cpu } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const LaboratoryManager: React.FC = () => {
-  const [rooms] = useState<Room[]>(storageService.getRooms());
-  const buildings = storageService.getBuildings();
-  const floors = storageService.getFloors();
-  const departments = storageService.getDepartments();
+  const { data: rooms, loading, error } = useApiResource<Room[]>(() => apiService.getRooms(), []);
+  const { data: buildings } = useApiResource<Building[]>(() => apiService.getBuildings(), []);
+  const { data: floors } = useApiResource<Floor[]>(() => apiService.getFloors(), []);
+  const { data: departments } = useApiResource<Department[]>(() => apiService.getDepartments(), []);
 
   const labs = rooms.filter(r => r.type === 'laboratory');
 
@@ -20,6 +21,13 @@ export const LaboratoryManager: React.FC = () => {
           High-performance computing, AI, CAD/CAM, VLSI, and robotics laboratories with equipment profiles.
         </p>
       </div>
+
+      {loading && <p className="text-xs text-slate-500">Loading laboratories…</p>}
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          Could not load laboratories: {error}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {labs.map(lab => {
@@ -44,9 +52,9 @@ export const LaboratoryManager: React.FC = () => {
                 <div className="text-xs text-slate-600 space-y-1">
                   <p className="flex items-center gap-1.5 font-medium text-slate-800">
                     <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                    <span>{bldg?.name} ({bldg?.originalCode}) • {flr?.name}</span>
+                    <span>{bldg?.name} ({bldg?.originalCode}){flr ? ` • ${flr.name}` : ''}</span>
                   </p>
-                  <p>Department: <strong>{dept?.name}</strong></p>
+                  {dept && <p>Department: <strong>{dept.name}</strong></p>}
                 </div>
 
                 {lab.equipment && lab.equipment.length > 0 && (
@@ -67,9 +75,9 @@ export const LaboratoryManager: React.FC = () => {
                 {bldg && (
                   <Link
                     to={`/campus/${bldg.slug}?room=${lab.id}`}
-                    className="font-bold text-teal-700 hover:underline flex items-center gap-1"
+                    className="font-bold text-teal-700 hover:underline"
                   >
-                    <span>View Blueprint Position</span> &rarr;
+                    View Blueprint Position &rarr;
                   </Link>
                 )}
                 <span className="font-mono text-slate-400 text-[10px]">ID: {lab.id}</span>
@@ -81,4 +89,3 @@ export const LaboratoryManager: React.FC = () => {
     </div>
   );
 };
-

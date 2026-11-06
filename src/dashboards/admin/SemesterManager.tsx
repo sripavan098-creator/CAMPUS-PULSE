@@ -1,16 +1,24 @@
 import React, { useState } from 'react';
-import { storageService } from '../../services/storageService';
+import { apiService } from '../../services/apiService';
+import { useApiResource } from '../../hooks/useApiResource';
 import { Semester } from '../../types';
-import { Layers, Plus, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 
 export const SemesterManager: React.FC = () => {
-  const [semesters, setSemesters] = useState<Semester[]>(storageService.getSemesters());
-  const reload = () => setSemesters(storageService.getSemesters());
+  const { data: semesters, loading, error, reload } = useApiResource<Semester[]>(
+    () => apiService.getSemesters(),
+    []
+  );
+  const [busy, setBusy] = useState(false);
 
-  const handleSetActive = (id: string) => {
-    const updated = semesters.map(s => ({ ...s, isActive: s.id === id }));
-    storageService.saveSemesters(updated);
-    reload();
+  const handleSetActive = async (id: string) => {
+    setBusy(true);
+    try {
+      await apiService.activateSemester(id);
+      reload();
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -21,6 +29,13 @@ export const SemesterManager: React.FC = () => {
           Manage odd/even semester cycle definitions and published schedule activation status.
         </p>
       </div>
+
+      {loading && <p className="text-xs text-slate-500">Loading semesters…</p>}
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          Could not load semesters: {error}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {semesters.map(s => (
@@ -40,7 +55,8 @@ export const SemesterManager: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Duration: {s.startDate} to {s.endDate} • Type: <strong>{s.type} Semester</strong>
+                {s.startDate && s.endDate ? <>Duration: {s.startDate} to {s.endDate} • </> : null}
+                Type: <strong>{s.type} Semester</strong>
               </p>
             </div>
 
@@ -48,8 +64,9 @@ export const SemesterManager: React.FC = () => {
               <span className="text-slate-400 font-mono text-[11px]">ID: {s.id}</span>
               {!s.isActive ? (
                 <button
+                  disabled={busy}
                   onClick={() => handleSetActive(s.id)}
-                  className="font-bold text-blue-600 hover:underline"
+                  className="font-bold text-blue-600 hover:underline disabled:opacity-50"
                 >
                   Activate Semester
                 </button>
@@ -65,4 +82,3 @@ export const SemesterManager: React.FC = () => {
     </div>
   );
 };
-

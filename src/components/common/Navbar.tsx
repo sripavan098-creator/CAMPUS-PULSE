@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { Logo } from './Logo';
 import { useAuth } from '../../hooks/useAuth';
-import { storageService } from '../../services/storageService';
+import { apiService } from '../../services/apiService';
 
 interface NavbarProps {
   onOpenSearch: () => void;
@@ -31,9 +31,23 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const notifs = storageService.getNotifications();
-    setUnreadCount(notifs.filter(n => !n.isRead).length);
-  }, [location.pathname]);
+    if (!isAuthenticated) {
+      setUnreadCount(0);
+      return;
+    }
+    let cancelled = false;
+    apiService
+      .getNotifications()
+      .then(notifs => {
+        if (!cancelled) setUnreadCount(notifs.filter(n => !n.isRead).length);
+      })
+      .catch(() => {
+        if (!cancelled) setUnreadCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, isAuthenticated]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;

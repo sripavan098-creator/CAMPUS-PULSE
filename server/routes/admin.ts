@@ -871,6 +871,8 @@ router.post('/rooms', async (req: AuthRequest, res: Response) => {
     res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Room id and blockId are required.' } })
     return
   }
+  // `confidence` is non-nullable; an admin-created room is authoritative.
+  if (!data.confidence) data.confidence = 'confirmed'
   const room = await prisma.room.create({ data: data as Prisma.RoomUncheckedCreateInput })
   res.status(201).json({ room })
 })

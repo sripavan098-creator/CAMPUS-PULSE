@@ -1,13 +1,24 @@
 import React, { useState } from 'react';
-import { storageService } from '../../services/storageService';
-import { Bell, Check, Clock, Calendar, Info } from 'lucide-react';
+import { apiService } from '../../services/apiService';
+import { useApiResource } from '../../hooks/useApiResource';
+import { UserNotification } from '../../types';
+import { Bell } from 'lucide-react';
 
 export const StudentNotificationsPage: React.FC = () => {
-  const [notifications, setNotifications] = useState(storageService.getNotifications());
+  const { data: notifications, loading, error, reload } = useApiResource<UserNotification[]>(
+    () => apiService.getNotifications(),
+    []
+  );
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const handleMarkRead = (id: string) => {
-    storageService.markNotificationRead(id);
-    setNotifications(storageService.getNotifications());
+  const handleMarkRead = async (id: string) => {
+    setBusyId(id);
+    try {
+      await apiService.markNotificationRead(id);
+      reload();
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (
@@ -16,6 +27,19 @@ export const StudentNotificationsPage: React.FC = () => {
         <h1 className="text-2xl font-extrabold text-[#142B4A]">Academic Notifications</h1>
         <p className="text-xs text-slate-500">Live alerts regarding timetable modifications, room changes, and department notices.</p>
       </div>
+
+      {loading && <p className="text-xs text-slate-500">Loading notifications…</p>}
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          Could not load notifications: {error}
+        </p>
+      )}
+
+      {!loading && notifications.length === 0 && (
+        <p className="text-xs text-slate-400 italic p-4 bg-slate-50 rounded-xl">
+          You have no notifications right now.
+        </p>
+      )}
 
       <div className="space-y-3">
         {notifications.map(n => (
@@ -41,8 +65,9 @@ export const StudentNotificationsPage: React.FC = () => {
 
               {!n.isRead && (
                 <button
+                  disabled={busyId === n.id}
                   onClick={() => handleMarkRead(n.id)}
-                  className="px-2.5 py-1 text-[11px] font-bold text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors shrink-0"
+                  className="px-2.5 py-1 text-[11px] font-bold text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors shrink-0 disabled:opacity-50"
                 >
                   Mark as Read
                 </button>
@@ -54,4 +79,3 @@ export const StudentNotificationsPage: React.FC = () => {
     </div>
   );
 };
-
