@@ -13,6 +13,7 @@ import {
 import { Room, Building, Floor } from '../../types';
 import { timetableService } from '../../services/timetableService';
 import { storageService } from '../../services/storageService';
+import { useLookups } from '../../hooks/useLookups';
 
 interface FloorResourceTableProps {
   building: Building;
@@ -36,10 +37,7 @@ export const FloorResourceTable: React.FC<FloorResourceTableProps> = ({
   const [filterStatus, setFilterStatus] = useState<'all' | 'available' | 'occupied' | 'upcoming' | 'laboratories'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const departments = storageService.getDepartments();
-  const subjects = storageService.getSubjects();
-  const facultyList = storageService.getFaculty();
-  const sections = storageService.getSections();
+  const { departments, subjects, faculty: facultyList, sections } = useLookups();
 
   const getSubj = (id?: string) => subjects.find(s => s.id === id);
   const getFac = (id?: string) => facultyList.find(f => f.id === id);

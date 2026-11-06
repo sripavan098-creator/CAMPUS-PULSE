@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
-import { storageService } from '../../services/storageService';
-import { Department } from '../../types';
-import { Building2, Users, GraduationCap, Plus } from 'lucide-react';
+import React from 'react';
+import { apiService } from '../../services/apiService';
+import { useApiResource } from '../../hooks/useApiResource';
+import { Department, Building } from '../../types';
 
 export const DepartmentManager: React.FC = () => {
-  const [departments, setDepartments] = useState<Department[]>(storageService.getDepartments());
-  const buildings = storageService.getBuildings();
+  const { data: departments, loading, error } = useApiResource<Department[]>(
+    () => apiService.getDepartments(),
+    []
+  );
+  const { data: buildings } = useApiResource<Building[]>(() => apiService.getBuildings(), []);
 
   return (
     <div className="space-y-6">
@@ -15,6 +18,13 @@ export const DepartmentManager: React.FC = () => {
           Participating academic departments, head of department allocations, and building headquarters.
         </p>
       </div>
+
+      {loading && <p className="text-xs text-slate-500">Loading departments…</p>}
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          Could not load departments: {error}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {departments.map(d => {
@@ -52,4 +62,3 @@ export const DepartmentManager: React.FC = () => {
     </div>
   );
 };
-

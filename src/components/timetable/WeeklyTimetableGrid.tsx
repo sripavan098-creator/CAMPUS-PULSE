@@ -2,6 +2,7 @@ import React from 'react';
 import { TimetableEntry, DayOfWeek } from '../../types';
 import { DAYS_OF_WEEK, TIME_SLOTS, formatTime12h, timeToMinutes } from '../../utils/timeUtils';
 import { storageService } from '../../services/storageService';
+import { useLookups } from '../../hooks/useLookups';
 import { Clock, MapPin, User, BookOpen } from 'lucide-react';
 
 interface WeeklyTimetableGridProps {
@@ -19,11 +20,7 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
   onSelectEntry,
   showSection = true
 }) => {
-  const subjects = storageService.getSubjects();
-  const facultyList = storageService.getFaculty();
-  const rooms = storageService.getRooms();
-  const buildings = storageService.getBuildings();
-  const sections = storageService.getSections();
+  const { subjects, faculty: facultyList, rooms, buildings, sections } = useLookups();
 
   const getSubj = (id: string) => subjects.find(s => s.id === id);
   const getFac = (id: string) => facultyList.find(f => f.id === id);

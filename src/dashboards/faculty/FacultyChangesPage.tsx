@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
-import { storageService } from '../../services/storageService';
-import { History, Calendar, User, ArrowRight, Info } from 'lucide-react';
+import React from 'react';
+import { apiService } from '../../services/apiService';
+import { useApiResource } from '../../hooks/useApiResource';
+import { TimetableChange } from '../../types';
 
 export const FacultyChangesPage: React.FC = () => {
-  const [changes] = useState(storageService.getChanges());
+  const { data: changes, loading, error } = useApiResource<TimetableChange[]>(
+    () => apiService.getFacultyChanges(),
+    []
+  );
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -11,6 +15,19 @@ export const FacultyChangesPage: React.FC = () => {
         <h1 className="text-2xl font-extrabold text-[#142B4A]">Timetable Modification Audit Logs</h1>
         <p className="text-xs text-slate-500">Record of official classroom relocations, timing changes, and class shifts.</p>
       </div>
+
+      {loading && <p className="text-xs text-slate-500">Loading change log…</p>}
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          Could not load change log: {error}
+        </p>
+      )}
+
+      {!loading && changes.length === 0 && (
+        <p className="text-xs text-slate-400 italic p-4 bg-slate-50 rounded-xl">
+          No timetable modifications recorded yet.
+        </p>
+      )}
 
       <div className="space-y-3">
         {changes.map(ch => (
@@ -30,22 +47,23 @@ export const FacultyChangesPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="p-3 bg-red-50/60 rounded-xl border border-red-200/60">
                 <span className="text-[10px] font-bold text-red-600 uppercase">Previous Schedule</span>
-                <p className="font-bold text-slate-800 line-through mt-0.5">{ch.previousValue}</p>
+                <p className="font-bold text-slate-800 line-through mt-0.5">{ch.previousValue || '—'}</p>
               </div>
 
               <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200/60">
                 <span className="text-[10px] font-bold text-emerald-600 uppercase">Updated Schedule</span>
-                <p className="font-bold text-emerald-900 mt-0.5">{ch.updatedValue}</p>
+                <p className="font-bold text-emerald-900 mt-0.5">{ch.updatedValue || '—'}</p>
               </div>
             </div>
 
-            <p className="text-xs text-slate-600 italic">
-              <strong>Official Note:</strong> {ch.reason}
-            </p>
+            {ch.reason && (
+              <p className="text-xs text-slate-600 italic">
+                <strong>Official Note:</strong> {ch.reason}
+              </p>
+            )}
           </div>
         ))}
       </div>
     </div>
   );
 };
-

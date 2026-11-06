@@ -1,46 +1,50 @@
 import React, { useState } from 'react';
-import { storageService } from '../../services/storageService';
+import { apiService } from '../../services/apiService';
+import { useApiResource } from '../../hooks/useApiResource';
 import { AcademicYear } from '../../types';
-import { FileSpreadsheet, Plus, CheckCircle2, Archive, Edit, Save, X, Sparkles } from 'lucide-react';
+import { Plus, CheckCircle2 } from 'lucide-react';
 
 export const AcademicYearManager: React.FC = () => {
-  const [years, setYears] = useState<AcademicYear[]>(storageService.getAcademicYears());
+  const { data: years, loading, error, reload } = useApiResource<AcademicYear[]>(
+    () => apiService.getAcademicYears(),
+    []
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [yearName, setYearName] = useState('2027-2028');
   const [startDate, setStartDate] = useState('2027-06-15');
   const [endDate, setEndDate] = useState('2028-05-30');
+  const [busy, setBusy] = useState(false);
 
-  const reload = () => setYears(storageService.getAcademicYears());
-
-  const handleSetActive = (id: string) => {
-    const updated = years.map(y => ({
-      ...y,
-      isActive: y.id === id,
-      isArchived: y.id === id ? false : y.isArchived
-    }));
-    storageService.saveAcademicYears(updated);
-    reload();
+  const handleSetActive = async (id: string) => {
+    setBusy(true);
+    try {
+      await apiService.activateAcademicYear(id);
+      reload();
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleToggleArchive = (id: string) => {
-    const updated = years.map(y => (y.id === id ? { ...y, isArchived: !y.isArchived } : y));
-    storageService.saveAcademicYears(updated);
-    reload();
+  const handleToggleArchive = async (id: string, archived: boolean) => {
+    setBusy(true);
+    try {
+      await apiService.updateAcademicYear(id, { isArchived: !archived });
+      reload();
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleAddYear = (e: React.FormEvent) => {
+  const handleAddYear = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newYear: AcademicYear = {
-      id: `ay-${Date.now()}`,
-      yearName,
-      startDate,
-      endDate,
-      isActive: false,
-      isArchived: false
-    };
-    storageService.saveAcademicYears([...years, newYear]);
-    setIsModalOpen(false);
-    reload();
+    setBusy(true);
+    try {
+      await apiService.createAcademicYear({ yearName, startDate, endDate });
+      setIsModalOpen(false);
+      reload();
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -61,6 +65,13 @@ export const AcademicYearManager: React.FC = () => {
           <span>Add New Academic Year</span>
         </button>
       </div>
+
+      {loading && <p className="text-xs text-slate-500">Loading academic years…</p>}
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          Could not load academic years: {error}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {years.map(y => (
@@ -96,8 +107,9 @@ export const AcademicYearManager: React.FC = () => {
             <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs">
               {!y.isActive ? (
                 <button
+                  disabled={busy}
                   onClick={() => handleSetActive(y.id)}
-                  className="font-bold text-blue-600 hover:underline"
+                  className="font-bold text-blue-600 hover:underline disabled:opacity-50"
                 >
                   Activate Session
                 </button>
@@ -108,8 +120,9 @@ export const AcademicYearManager: React.FC = () => {
               )}
 
               <button
-                onClick={() => handleToggleArchive(y.id)}
-                className="text-slate-500 hover:text-slate-800"
+                disabled={busy}
+                onClick={() => handleToggleArchive(y.id, y.isArchived)}
+                className="text-slate-500 hover:text-slate-800 disabled:opacity-50"
               >
                 {y.isArchived ? 'Unarchive' : 'Archive Session'}
               </button>
@@ -119,10 +132,12 @@ export const AcademicYearManager: React.FC = () => {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-slate-900">Add Academic Year</h3>
-            <form onSubmit={handleAddYear} className="space-y-3 text-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="bg-[#142B4A] text-white p-5">
+              <h3 className="text-base font-bold">Register New Academic Year</h3>
+            </div>
+            <form onSubmit={handleAddYear} className="p-6 space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 uppercase mb-1">Academic Year Name</label>
                 <input
@@ -130,41 +145,43 @@ export const AcademicYearManager: React.FC = () => {
                   value={yearName}
                   onChange={e => setYearName(e.target.value)}
                   required
-                  placeholder="e.g. 2027-2028"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold font-mono"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold"
                 />
               </div>
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Term Start Date</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Term Start</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    required
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Term End</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    required
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Term End Date</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => setEndDate(e.target.value)}
-                  required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3 py-1.5 border border-slate-300 rounded-lg font-bold"
+                  className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-slate-700"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-[#2563EB] text-white rounded-lg font-bold"
+                  disabled={busy}
+                  className="px-5 py-2 bg-[#2563EB] hover:bg-blue-700 text-white rounded-xl font-bold disabled:opacity-50"
                 >
                   Save Academic Year
                 </button>
@@ -176,4 +193,3 @@ export const AcademicYearManager: React.FC = () => {
     </div>
   );
 };
-

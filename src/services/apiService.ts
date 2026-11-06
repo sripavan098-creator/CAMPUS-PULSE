@@ -127,10 +127,15 @@ export const apiService = {
   },
 
   // ==================== LIVE AVAILABILITY ====================
-  async getAvailability(day: DayOfWeek, time: string, type?: string): Promise<any[]> {
-    const query = new URLSearchParams({ day, time });
+  async getAvailability(day: DayOfWeek, from: string, to: string, block?: string, type?: string): Promise<any[]> {
+    const query = new URLSearchParams({ day, from, to });
+    if (block) query.append('block', block);
     if (type) query.append('type', type);
-    return apiClient.get<any[]>(`/api/availability?${query.toString()}`, { requiresAuth: false });
+    return apiClient.get<any[]>(`/api/availability/search?${query.toString()}`, { requiresAuth: false });
+  },
+
+  async getAvailabilityNow(): Promise<any> {
+    return apiClient.get<any>('/api/availability/now', { requiresAuth: false });
   },
 
   // ==================== ACADEMIC STRUCTURE ====================
@@ -168,5 +173,59 @@ export const apiService = {
 
   async getNotifications(): Promise<UserNotification[]> {
     return apiClient.get<UserNotification[]>('/api/notifications', { requiresAuth: true });
+  },
+
+  async markNotificationRead(id: string): Promise<void> {
+    await apiClient.post(`/api/me/notifications/${encodeURIComponent(id)}/read`, {});
+  },
+
+  async getFacultyChanges(): Promise<TimetableChange[]> {
+    return apiClient.get<TimetableChange[]>('/api/faculty/me/changes', { requiresAuth: true });
+  },
+
+  async getFacultyTimetable(): Promise<TimetableEntry[]> {
+    return apiClient.get<TimetableEntry[]>('/api/faculty/me/timetable', { requiresAuth: true });
+  },
+
+  async getAuditLog(): Promise<any[]> {
+    return apiClient.get<any[]>('/api/admin/audit-log', { requiresAuth: true });
+  },
+
+  async getConflicts(): Promise<any> {
+    return apiClient.get<any>('/api/admin/conflicts', { requiresAuth: true });
+  },
+
+  // ==================== ADMIN CRUD ====================
+  // The REST layer names the owning building `blockId` while the SPA type calls
+  // it `buildingId`; accept the raw payload so callers can send either.
+  async createRoom(room: Record<string, unknown>): Promise<any> {
+    return apiClient.post('/api/admin/rooms', room);
+  },
+
+  async updateRoom(id: string, room: Record<string, unknown>): Promise<any> {
+    return apiClient.put(`/api/admin/rooms/${encodeURIComponent(id)}`, room);
+  },
+
+  async deleteRoom(id: string): Promise<void> {
+    await apiClient.delete(`/api/admin/rooms/${encodeURIComponent(id)}`);
+  },
+
+  async createAcademicYear(year: { yearName: string; startDate: string; endDate: string }): Promise<AcademicYear> {
+    return apiClient.post<AcademicYear>('/api/academic-years', year);
+  },
+
+  async updateAcademicYear(id: string, patch: Partial<AcademicYear>): Promise<AcademicYear> {
+    return apiClient.put<AcademicYear>(`/api/academic-years/${encodeURIComponent(id)}`, patch);
+  },
+
+  async activateAcademicYear(id: string): Promise<AcademicYear> {
+    return apiClient.put<AcademicYear>(`/api/academic-years/${encodeURIComponent(id)}`, {
+      isActive: true,
+      isArchived: false
+    });
+  },
+
+  async activateSemester(id: string): Promise<Semester> {
+    return apiClient.put<Semester>(`/api/semesters/${encodeURIComponent(id)}`, { isActive: true });
   }
 };

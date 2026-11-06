@@ -531,6 +531,25 @@ async function main() {
     console.log(`- Linked ${facultyCount} distinct faculty from source legends`)
   }
 
+  // Academic year + semester rows. The admin Academic Year and Semester tabs
+  // read these, and their Activate buttons update them, so they must exist in
+  // the database rather than only in the SPA's bundled demo constants.
+  const academicYears = [
+    { id: 'ay-2026-27', yearName: '2026-2027', startDate: '2026-06-01', endDate: '2027-05-31', isActive: true, isArchived: false },
+    { id: 'ay-2025-26', yearName: '2025-2026', startDate: '2025-06-01', endDate: '2026-05-31', isActive: false, isArchived: true },
+  ]
+  for (const y of academicYears) {
+    await prisma.academicYear.upsert({ where: { id: y.id }, update: {}, create: y })
+  }
+
+  const semesters = [
+    { id: 'sem-odd-2026', academicYearId: 'ay-2026-27', semesterNumber: 1, name: 'Semester I (Odd)', type: 'ODD', startDate: '2026-06-01', endDate: '2026-11-30', isActive: false },
+    { id: 'sem-even-2026', academicYearId: 'ay-2026-27', semesterNumber: 2, name: 'Semester II (Even)', type: 'EVEN', startDate: '2026-12-01', endDate: '2027-05-31', isActive: true },
+  ]
+  for (const sem of semesters) {
+    await prisma.semester.upsert({ where: { id: sem.id }, update: {}, create: sem })
+  }
+
   console.log(`Database seeded successfully!`)
   console.log(`- 5 Blocks & floors`)
   console.log(`- ${confirmedRooms.length} Confirmed/Inferred Rooms`)

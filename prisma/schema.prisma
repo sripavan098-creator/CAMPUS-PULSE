@@ -212,3 +212,28 @@ model AuditLog {
 
   @@index([createdAt])
 }
+
+model AcademicYear {
+  id         String     @id
+  yearName   String
+  startDate  String
+  endDate    String
+  isActive   Boolean    @default(false)
+  isArchived Boolean    @default(false)
+  createdAt  DateTime   @default(now())
+  semesters  Semester[]
+}
+
+model Semester {
+  id             String       @id
+  academicYearId String
+  semesterNumber Int
+  name           String
+  type           String       // "ODD" | "EVEN"
+  startDate      String       @default("")
+  endDate        String       @default("")
+  isActive       Boolean      @default(false)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@index([academicYearId])
+}

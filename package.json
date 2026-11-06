@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "prisma generate && npx prisma migrate deploy && npm run db:seed && tsx server/index.ts",
+    "start": "prisma generate && npx prisma db push --skip-generate && npm run db:seed && tsx server/index.ts",
     "dev": "concurrently \"vite\" \"tsx watch server/index.ts\"",
     "dev:frontend": "vite",
     "dev:backend": "tsx watch server/index.ts",

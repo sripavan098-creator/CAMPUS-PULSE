@@ -767,27 +767,129 @@ router.get('/notifications', requireAuth, async (req: AuthRequest, res: Response
 
 // GET /api/departments
 router.get('/departments', async (_req: Request, res: Response) => {
-  const depts = await prisma.department.findMany()
+  const [depts, facultyByDept, groupsByDept] = await Promise.all([
+    prisma.department.findMany(),
+    prisma.faculty.groupBy({ by: ['departmentId'], _count: { _all: true } }),
+    prisma.group.groupBy({ by: ['departmentId'], _sum: { size: true }, _count: { _all: true } })
+  ])
+  const facultyCount = new Map(facultyByDept.map(f => [f.departmentId, f._count._all]))
+  const studentSum = new Map(groupsByDept.map(g => [g.departmentId, g._sum.size ?? 0]))
+  const groupCount = new Map(groupsByDept.map(g => [g.departmentId, g._count._all]))
+
   res.json(depts.map(d => ({
     id: d.id,
     name: d.name,
-    code: d.code
+    code: d.code,
+    buildingId: 'A',
+    headOfDepartment: `Head of Department, ${d.code}`,
+    totalFaculty: facultyCount.get(d.id) ?? 0,
+    totalStudents: studentSum.get(d.id) ?? (groupCount.get(d.id) ?? 0) * 65
   })))
+})
+
+// GET /api/students - the admin Student Directory reads this. Users with
+// role=student carry their group name; enrich it into department + section so
+// the grid renders real rows instead of the demo placeholders.
+router.get('/students', requireAuth, requireRole('admin', 'faculty'), async (_req: AuthRequest, res: Response) => {
+  const users = await prisma.user.findMany({
+    where: { role: 'student' },
+    orderBy: { name: 'asc' }
+  })
+  const groups = await prisma.group.findMany()
+  const groupByName = new Map(groups.map(g => [g.name, g]))
+
+  res.json(users.map(u => {
+    const group = u.group ? groupByName.get(u.group) : undefined
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      registrationNumber: u.email.split('@')[0].toUpperCase(),
+      departmentId: group?.departmentId ?? '',
+      sectionId: group?.name ?? u.group ?? '',
+      yearOfStudy: group?.year ?? 1,
+      isDemo: u.is_demo
+    }
+  }))
 })
 
 // GET /api/academic-years
 router.get('/academic-years', async (_req: Request, res: Response) => {
-  res.json([
-    { id: 'ay-2026-27', yearName: '2026-2027', startDate: '2026-06-01', endDate: '2027-05-31', isActive: true }
-  ])
+  const years = await prisma.academicYear.findMany({ orderBy: { yearName: 'desc' } })
+  res.json(years.map(y => ({
+    id: y.id,
+    yearName: y.yearName,
+    startDate: y.startDate,
+    endDate: y.endDate,
+    isActive: y.isActive,
+    isArchived: y.isArchived
+  })))
 })
 
 // GET /api/semesters
 router.get('/semesters', async (_req: Request, res: Response) => {
-  res.json([
-    { id: 'sem-odd-2026', academicYearId: 'ay-2026-27', semesterNumber: 1, name: 'Semester I (Odd)', isActive: false },
-    { id: 'sem-even-2026', academicYearId: 'ay-2026-27', semesterNumber: 2, name: 'Semester II (Even)', isActive: true }
-  ])
+  const semesters = await prisma.semester.findMany({ orderBy: [{ academicYearId: 'desc' }, { semesterNumber: 'asc' }] })
+  res.json(semesters.map(s => ({
+    id: s.id,
+    academicYearId: s.academicYearId,
+    semesterNumber: s.semesterNumber,
+    name: s.name,
+    type: s.type,
+    startDate: s.startDate,
+    endDate: s.endDate,
+    isActive: s.isActive
+  })))
+})
+
+// POST /api/academic-years - admin creates a session.
+router.post('/academic-years', requireAuth, requireRole('admin'), async (req: AuthRequest, res: Response) => {
+  const { id, yearName, startDate, endDate, isActive, isArchived } = req.body ?? {}
+  if (!yearName) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'yearName is required.' } })
+    return
+  }
+  const created = await prisma.academicYear.create({
+    data: {
+      id: String(id || `ay-${Date.now()}`),
+      yearName: String(yearName),
+      startDate: String(startDate ?? ''),
+      endDate: String(endDate ?? ''),
+      isActive: Boolean(isActive),
+      isArchived: Boolean(isArchived)
+    }
+  })
+  res.status(201).json(created)
+})
+
+// PUT /api/academic-years/:id - activate / archive / edit a session.
+router.put('/academic-years/:id', requireAuth, requireRole('admin'), async (req: AuthRequest, res: Response) => {
+  const { id } = req.params
+  const { yearName, startDate, endDate, isActive, isArchived } = req.body ?? {}
+
+  if (isActive === true) {
+    await prisma.academicYear.updateMany({ data: { isActive: false } })
+  }
+
+  const data: Record<string, unknown> = {}
+  if (yearName !== undefined) data.yearName = String(yearName)
+  if (startDate !== undefined) data.startDate = String(startDate)
+  if (endDate !== undefined) data.endDate = String(endDate)
+  if (isActive !== undefined) data.isActive = Boolean(isActive)
+  if (isArchived !== undefined) data.isArchived = Boolean(isArchived)
+
+  const updated = await prisma.academicYear.update({ where: { id: String(id) }, data })
+  res.json(updated)
+})
+
+// PUT /api/semesters/:id - activate a semester (single active at a time).
+router.put('/semesters/:id', requireAuth, requireRole('admin'), async (req: AuthRequest, res: Response) => {
+  const { id } = req.params
+  const { isActive } = req.body ?? {}
+  if (isActive === true) {
+    await prisma.semester.updateMany({ data: { isActive: false } })
+  }
+  const updated = await prisma.semester.update({ where: { id: String(id) }, data: { isActive: Boolean(isActive) } })
+  res.json(updated)
 })
 
 // GET /api/sections

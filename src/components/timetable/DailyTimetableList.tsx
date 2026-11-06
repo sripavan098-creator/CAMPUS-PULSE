@@ -1,6 +1,7 @@
 import React from 'react';
 import { TimetableEntry, DayOfWeek } from '../../types';
 import { storageService } from '../../services/storageService';
+import { useLookups } from '../../hooks/useLookups';
 import { timeToMinutes, formatTime12h } from '../../utils/timeUtils';
 import { Clock, MapPin, User, BookOpen, Layers, CheckCircle, AlertCircle } from 'lucide-react';
 
@@ -17,12 +18,7 @@ export const DailyTimetableList: React.FC<DailyTimetableListProps> = ({
   currentTime = '10:00',
   onSelectEntry
 }) => {
-  const subjects = storageService.getSubjects();
-  const facultyList = storageService.getFaculty();
-  const rooms = storageService.getRooms();
-  const buildings = storageService.getBuildings();
-  const floors = storageService.getFloors();
-  const sections = storageService.getSections();
+  const { subjects, faculty: facultyList, rooms, buildings, floors, sections } = useLookups();
 
   const getSubj = (id: string) => subjects.find(s => s.id === id);
   const getFac = (id: string) => facultyList.find(f => f.id === id);
