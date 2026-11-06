@@ -288,11 +288,10 @@ export const BuildingDetailPage: React.FC = () => {
               <button
                 key={flr.id}
                 onClick={() => handleFloorChange(flr)}
-                className={`p-3.5 rounded-2xl border text-left transition-all ${
-                  isSelected
+                className={`p-3.5 rounded-2xl border text-left transition-all ${isSelected
                     ? 'bg-[#142B4A] text-white border-[#142B4A] shadow-md ring-2 ring-blue-500/50'
                     : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:bg-slate-50'
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-between">
                   <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-blue-300' : 'text-slate-400'}`}>
