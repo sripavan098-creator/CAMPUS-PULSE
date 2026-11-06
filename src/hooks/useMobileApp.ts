@@ -60,7 +60,7 @@ export const useMobileApp = () => {
     });
 
     return () => {
-      backListener.then(handle => handle.remove()).catch(() => {});
+      backListener.then((handle: any) => handle.remove()).catch(() => {});
     };
   }, [location.pathname, navigate]);
 };
