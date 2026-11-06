@@ -22,6 +22,25 @@ interface RequestOptions extends RequestInit {
   requiresAuth?: boolean;
 }
 
+/**
+ * Pull a human-readable message out of a failed response body. The backend
+ * wraps errors as `{ error: { code, message } }`, but plain `{ message }` and
+ * `{ detail }` shapes are handled too so an error object never leaks into the
+ * UI as "[object Object]".
+ */
+export function extractErrorMessage(data: any, status: number): string {
+  if (data && typeof data === 'object') {
+    const { error, message, detail } = data;
+    if (typeof error === 'string' && error) return error;
+    if (error && typeof error === 'object' && typeof error.message === 'string' && error.message) {
+      return error.message;
+    }
+    if (typeof message === 'string' && message) return message;
+    if (typeof detail === 'string' && detail) return detail;
+  }
+  return `Request failed with status ${status}`;
+}
+
 export const apiClient = {
   async request<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const {
@@ -61,13 +80,6 @@ export const apiClient = {
 
       clearTimeout(timeoutId);
 
-      // Handle 401 Unauthorized (session expired or invalid token)
-      if (response.status === 401) {
-        await tokenStorage.clearAll();
-        window.dispatchEvent(new CustomEvent('campus_pulse_session_expired'));
-        throw new ApiError('Session expired. Please log in again.', 401);
-      }
-
       // Parse response body
       const contentType = response.headers.get('content-type') || '';
       let data: any = null;
@@ -82,11 +94,21 @@ export const apiClient = {
         }
       }
 
+      // A 401 while we held a token means the session died, so drop it and
+      // broadcast. A 401 with no token is just a failed login, and its real
+      // message (e.g. "Email or password is incorrect.") must reach the user.
+      if (response.status === 401) {
+        const hadToken = requiresAuth && Boolean(await tokenStorage.getToken());
+        if (hadToken) {
+          await tokenStorage.clearAll();
+          window.dispatchEvent(new CustomEvent('campus_pulse_session_expired'));
+          throw new ApiError('Session expired. Please log in again.', 401, data);
+        }
+        throw new ApiError(extractErrorMessage(data, 401), 401, data);
+      }
+
       if (!response.ok) {
-        const errorMessage =
-          (data && typeof data === 'object' && (data.message || data.error || data.detail)) ||
-          `Request failed with status ${response.status}`;
-        throw new ApiError(errorMessage, response.status, data);
+        throw new ApiError(extractErrorMessage(data, response.status), response.status, data);
       }
 
       return data as T;
