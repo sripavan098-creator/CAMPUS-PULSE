@@ -21,7 +21,8 @@ import {
   BarChart3,
   Search,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  ArrowLeftRight
 } from 'lucide-react';
 import { Logo } from '../components/common/Logo';
 import { useAuth } from '../hooks/useAuth';
@@ -71,6 +72,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ requiredRole }
     return <Navigate to={`/${session.role}/dashboard`} replace />;
   }
 
+  // Admin-provisioned accounts must rotate their temporary password first.
+  if (session.mustChangePassword) {
+    return <Navigate to="/change-password" replace />;
+  }
+
   const getNavSections = () => {
     if (role === 'student') {
       return [
@@ -98,6 +104,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ requiredRole }
             { label: 'My Assigned Timetable', path: '/faculty/timetable', icon: Calendar },
             { label: 'My Free Slot Availability', path: '/faculty/availability', icon: Activity },
             { label: 'Timetable Modifications', path: '/faculty/changes', icon: History },
+            { label: 'Swap & Replace Periods', path: '/faculty/swap', icon: ArrowLeftRight },
             { label: 'Campus Explorer', path: '/campus', icon: Building },
             { label: 'Notifications', path: '/faculty/notifications', icon: Bell },
             { label: 'Faculty Profile', path: '/faculty/profile', icon: User },

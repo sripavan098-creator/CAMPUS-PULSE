@@ -217,6 +217,53 @@ router.get('/replacement-candidates', async (req: AuthRequest, res: Response) =>
   res.json({ entry, candidates: free })
 })
 
+// GET /api/faculty/me/swap-candidates?entryId=...
+// Other faculty members' live periods in the same section, offered as swap
+// targets. Same-section periods are the ones a counterpart can realistically
+// trade, since the students keep their room and slot.
+router.get('/swap-candidates', async (req: AuthRequest, res: Response) => {
+  const me = await currentFaculty(req)
+  if (!me) {
+    res.status(400).json({ error: { code: 'NO_FACULTY_RECORD', message: 'No faculty record is linked to this account.' } })
+    return
+  }
+
+  const entryId = String(req.query.entryId || '')
+  if (!entryId) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'entryId is required.' } })
+    return
+  }
+
+  const entry = await prisma.entry.findUnique({ where: { id: entryId } })
+  if (!entry) {
+    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Period not found.' } })
+    return
+  }
+  if (entry.facultyId !== me.id) {
+    res.status(403).json({ error: { code: 'FORBIDDEN', message: 'This period does not belong to you.' } })
+    return
+  }
+
+  const entries = await prisma.entry.findMany({
+    where: {
+      is_live: true,
+      groupId: entry.groupId ?? undefined,
+      facultyId: { not: null },
+      id: { not: entry.id },
+      NOT: { facultyId: me.id },
+    },
+    include: {
+      faculty: { select: { id: true, code: true, name: true } },
+      room: { select: { id: true, blockId: true } },
+      group: { select: { id: true, name: true } },
+    },
+    orderBy: [{ day: 'asc' }, { startTime: 'asc' }],
+    take: 200,
+  })
+
+  res.json({ entry, candidates: entries })
+})
+
 // POST /api/faculty/me/requests/replace
 router.post('/requests/replace', async (req: AuthRequest, res: Response) => {
   const parsed = ReplaceSchema.safeParse(req.body)
