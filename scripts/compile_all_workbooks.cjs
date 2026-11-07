@@ -66,6 +66,39 @@ function addGroup(name, year, departmentCode, section) {
   });
 }
 
+/**
+ * Read a sheet as a row-major grid with merged cells expanded.
+ *
+ * A double (or triple) period is written as ONE merged cell, e.g. a class spanning
+ * 10.05-10.55 and 10.55-11.45 sits in a single cell merged across both columns.
+ * sheet_to_json returns the value only in the merge's top-left cell and blanks the
+ * rest, so a naive read silently loses every second period of a double. Expanding
+ * the merge onto each covered cell keeps the timetable complete.
+ */
+function sheetGrid(wb, sheetName) {
+  const sheet = wb.Sheets[sheetName];
+  const grid = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+  // Merge ranges carry absolute A1-based indices, but sheet_to_json returns arrays
+  // offset to the sheet's first used cell. Sheets whose range starts at column B
+  // (several SASH sheets) would otherwise have every merge applied one column off.
+  const range = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : null;
+  const rowOff = range ? range.s.r : 0;
+  const colOff = range ? range.s.c : 0;
+  for (const m of (sheet['!merges'] || [])) {
+    const r0 = m.s.r - rowOff;
+    const c0 = m.s.c - colOff;
+    const value = grid[r0] && grid[r0][c0];
+    if (value === undefined || value === null || value === '') continue;
+    for (let r = r0; r <= m.e.r - rowOff; r++) {
+      if (!grid[r]) grid[r] = [];
+      for (let c = c0; c <= m.e.c - colOff; c++) {
+        if (grid[r][c] === undefined || grid[r][c] === null || grid[r][c] === '') grid[r][c] = value;
+      }
+    }
+  }
+  return grid;
+}
+
 function addEntry(group, day, startTime, endTime, subject, room, faculty, entryType) {
   if (!group || !day || !startTime || !endTime || !subject) return;
   entries.push({
@@ -289,7 +322,7 @@ try {
 
   for (const sheetName of wb.SheetNames) {
     if (!/^Sec \d+$/.test(sheetName)) continue;
-    const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+    const grid = sheetGrid(wb, sheetName);
     if (!grid || grid.length < 4) continue;
 
     const room = (String(grid[0][0] || '').match(/\[([^\]]+)\]/) || [])[1] || null;
@@ -332,7 +365,7 @@ try {
     // Division 4 sheets carry the branch in the section header ("SECTION - 30 (AIML)").
     const sashDept = {};
     for (const name of wb.SheetNames) {
-      const grid = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1 });
+      const grid = sheetGrid(wb, name);
       const head = String((grid && grid[0] && grid[0][0]) || '');
       const m = head.match(/SECTION\s*[-\u2013]?\s*\d+\s*\(([^)]*)\)/i);
       const dept = m ? branchToDepartment(m[1]) : null;
@@ -340,7 +373,7 @@ try {
     }
 
   for (const sheetName of wb.SheetNames) {
-    const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+    const grid = sheetGrid(wb, sheetName);
     if (!grid || grid.length < 6) continue;
 
     const sectionLabel = sheetName.replace(/^New\s+/, '').trim();
@@ -418,7 +451,7 @@ function parseLabDepartment(file, sheetFilter, deptCode, yearOf, headerScan) {
 
   for (const sheetName of wb.SheetNames) {
     if (!sheetFilter(sheetName)) continue;
-    const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+    const grid = sheetGrid(wb, sheetName);
     if (!grid || grid.length < 10) continue;
 
     const groupName = sheetName.trim();

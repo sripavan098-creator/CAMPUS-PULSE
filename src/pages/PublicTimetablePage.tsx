@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Calendar,
   Printer,
@@ -24,6 +25,7 @@ import { DailyTimetableList } from '../components/timetable/DailyTimetableList';
 import { DAYS_OF_WEEK, selectBellEntries } from '../utils/timeUtils';
 
 export const PublicTimetablePage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,13 +75,18 @@ export const PublicTimetablePage: React.FC = () => {
       setFaculty(facs);
       setRooms(rms);
 
+      // Deep link: /timetable?section=<id> opens that section directly, so a
+      // search result lands on the right timetable instead of a default one.
+      const requested = secs.find(s => s.id === searchParams.get('section'));
+
       // Initial default values
-      const defaultDept = depts[0]?.id || '';
+      const defaultDept = requested?.departmentId || depts[0]?.id || '';
       const defaultAy = ays.find(y => y.isActive)?.id || ays[0]?.id || '';
       const defaultSem = sems.find(s => s.isActive)?.id || sems[0]?.id || '';
       // The year-of-study selector defaults to 3, so pick a section that matches
       // it. Otherwise the dropdown shows one section while the grid loads another.
       const defaultSec =
+        requested?.id ||
         secs.find(s => s.departmentId === defaultDept && s.yearOfStudy === 3)?.id ||
         secs.find(s => s.departmentId === defaultDept)?.id ||
         secs[0]?.id ||
@@ -89,6 +96,7 @@ export const PublicTimetablePage: React.FC = () => {
       setSelectedYearId(defaultAy);
       setSelectedSemId(defaultSem);
       setSelectedSectionId(defaultSec);
+      if (requested) setSelectedYearOfStudy(requested.yearOfStudy);
 
       // Auto-load default section schedule from backend
       if (defaultSec) {

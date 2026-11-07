@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { apiService } from '../../services/apiService';
 import { timetableService } from '../../services/timetableService';
-import { Room, Faculty, Subject, Building, Department } from '../../types';
+import { Room, Faculty, Subject, Building, Department, Section } from '../../types';
 
 interface GlobalSearchModalProps {
   isOpen: boolean;
@@ -28,6 +28,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -39,13 +40,15 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
         apiService.getFaculty().catch(() => []),
         apiService.getSubjects().catch(() => []),
         apiService.getBuildings().catch(() => []),
-        apiService.getDepartments().catch(() => [])
-      ]).then(([rms, facs, subjs, bldgs, depts]) => {
+        apiService.getDepartments().catch(() => []),
+        apiService.getSections().catch(() => [])
+      ]).then(([rms, facs, subjs, bldgs, depts, secs]) => {
         setRooms(rms);
         setFaculty(facs);
         setSubjects(subjs);
         setBuildings(bldgs);
         setDepartments(depts);
+        setSections(secs);
       });
       setTimeout(() => inputRef.current?.focus(), 50);
     } else {
@@ -122,11 +125,22 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
       ).slice(0, 3)
     : [];
 
+  const deptCodeById = new Map(departments.map(d => [d.id, d.code]));
+
+  const filteredSections = trimmed
+    ? sections.filter(
+        s =>
+          s.name.toLowerCase().includes(trimmed) ||
+          (deptCodeById.get(s.departmentId) || '').toLowerCase().includes(trimmed)
+      ).slice(0, 5)
+    : [];
+
   const hasResults =
     filteredRooms.length > 0 ||
     filteredFaculty.length > 0 ||
     filteredSubjects.length > 0 ||
-    filteredBuildings.length > 0;
+    filteredBuildings.length > 0 ||
+    filteredSections.length > 0;
 
   const handleSelectRoom = (room: Room) => {
     const bldg = buildings.find(b => b.id === room.buildingId);
@@ -151,6 +165,11 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
   const handleSelectBuilding = (bldg: Building) => {
     onClose();
     navigate(`/campus/${bldg.slug}`);
+  };
+
+  const handleSelectSection = (sec: Section) => {
+    onClose();
+    navigate(`/timetable?section=${encodeURIComponent(sec.id)}`);
   };
 
   return (
@@ -307,6 +326,31 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
                 </div>
               )}
 
+              {/* Sections */}
+              {filteredSections.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-500" /> Sections ({filteredSections.length})
+                  </div>
+                  <div className="space-y-1">
+                    {filteredSections.map(sec => (
+                      <div
+                        key={sec.id}
+                        onClick={() => handleSelectSection(sec)}
+                        className="flex items-center justify-between p-2.5 hover:bg-blue-50/70 rounded-xl cursor-pointer transition-colors group border border-transparent hover:border-blue-100"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-800">{sec.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {deptCodeById.get(sec.departmentId) || 'Department'} • Year {sec.yearOfStudy} • {sec.totalStudents} students
+                          </p>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* Subjects */}
               {filteredSubjects.length > 0 && (
                 <div>
