@@ -21,7 +21,7 @@ import {
 } from '../types';
 import { WeeklyTimetableGrid } from '../components/timetable/WeeklyTimetableGrid';
 import { DailyTimetableList } from '../components/timetable/DailyTimetableList';
-import { DAYS_OF_WEEK } from '../utils/timeUtils';
+import { DAYS_OF_WEEK, selectBellEntries } from '../utils/timeUtils';
 
 export const PublicTimetablePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -46,6 +46,8 @@ export const PublicTimetablePage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'weekly' | 'daily'>('weekly');
   const [activeDay, setActiveDay] = useState<DayOfWeek>('Monday');
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
+  // Times drawn even when this section is free, so its day is not cut short.
+  const [bellEntries, setBellEntries] = useState<TimetableEntry[]>([]);
   const [hasQueried, setHasQueried] = useState(false);
   const [isQuerying, setIsQuerying] = useState(false);
 
@@ -85,8 +87,12 @@ export const PublicTimetablePage: React.FC = () => {
       // Auto-load default section schedule from backend
       if (defaultSec) {
         try {
-          const entries = await apiService.getTimetables({ sectionId: defaultSec });
+          const [entries, deptEntries] = await Promise.all([
+            apiService.getTimetables({ sectionId: defaultSec }),
+            apiService.getTimetables({ departmentId: defaultDept })
+          ]);
           setTimetableEntries(entries);
+          setBellEntries(selectBellEntries(deptEntries, defaultSec, entries));
           setHasQueried(true);
         } catch {
           // If timetable lookup fails, keep entries empty
@@ -116,8 +122,12 @@ export const PublicTimetablePage: React.FC = () => {
     setIsQuerying(true);
     setError(null);
     try {
-      const entries = await apiService.getTimetables({ sectionId: selectedSectionId });
+      const [entries, deptEntries] = await Promise.all([
+        apiService.getTimetables({ sectionId: selectedSectionId }),
+        apiService.getTimetables({ departmentId: selectedDeptId })
+      ]);
       setTimetableEntries(entries);
+      setBellEntries(selectBellEntries(deptEntries, selectedSectionId, entries));
       setHasQueried(true);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch timetable for the selected section.');
@@ -410,7 +420,7 @@ export const PublicTimetablePage: React.FC = () => {
               </p>
             </div>
           ) : viewMode === 'weekly' ? (
-            <WeeklyTimetableGrid entries={timetableEntries} />
+            <WeeklyTimetableGrid entries={timetableEntries} bellEntries={bellEntries} />
           ) : (
             <DailyTimetableList entries={timetableEntries} day={activeDay} />
           )}
