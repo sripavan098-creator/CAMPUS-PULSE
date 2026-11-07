@@ -1,6 +1,6 @@
 import React from 'react';
 import { TimetableEntry, DayOfWeek } from '../../types';
-import { DAYS_OF_WEEK, buildTimetableColumns, formatTime12h, timeToMinutes } from '../../utils/timeUtils';
+import { DAYS_OF_WEEK, buildTimetableColumns, formatTime12h, timeToMinutes, campusNow } from '../../utils/timeUtils';
 import { storageService } from '../../services/storageService';
 import { useLookups } from '../../hooks/useLookups';
 import { Clock, MapPin, User, BookOpen } from 'lucide-react';
@@ -21,8 +21,8 @@ interface WeeklyTimetableGridProps {
 
 export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
   entries,
-  currentDay = 'Monday',
-  currentTime = '10:00',
+  currentDay = campusNow().day,
+  currentTime = campusNow().time,
   onSelectEntry,
   showSection = true,
   bellEntries

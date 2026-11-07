@@ -211,19 +211,31 @@ export function doIntervalsOverlap(
   return aStart < bEnd && aEnd > bStart;
 }
 
+export const CAMPUS_TIME_ZONE = 'Asia/Kolkata';
+
+/**
+ * Current day and wall-clock time at the campus. The timetable is campus-local,
+ * so a browser in another timezone must not shift the day or the "now" line.
+ */
+export function campusNow(date: Date = new Date()): { day: DayOfWeek; time: string } {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: CAMPUS_TIME_ZONE,
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(date);
+  const get = (type: string) => parts.find(p => p.type === type)?.value || '';
+  const rawDay = get('weekday');
+  const day: DayOfWeek = (rawDay === 'Sunday' ? 'Monday' : rawDay) as DayOfWeek;
+  const hour = get('hour') === '24' ? '00' : get('hour');
+  return { day, time: `${hour}:${get('minute')}` };
+}
+
 export function getCurrentDayAndSimulatedTime(timeOverride?: string, dayOverride?: DayOfWeek) {
-  const now = new Date();
-  const dayNames: DayOfWeek[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as any;
-  const currentActualDay = dayNames[now.getDay()];
-  const day: DayOfWeek = dayOverride || (currentActualDay === ('Sunday' as any) ? 'Monday' : (currentActualDay as DayOfWeek));
-
-  let time = timeOverride;
-  if (!time) {
-    const hours = now.getHours().toString().padStart(2, '0');
-    const minutes = now.getMinutes().toString().padStart(2, '0');
-    time = `${hours}:${minutes}`;
-  }
-
+  const now = campusNow();
+  const day: DayOfWeek = dayOverride || now.day;
+  const time = timeOverride || now.time;
   return { day, time };
 }
 

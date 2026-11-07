@@ -2,7 +2,7 @@ import React from 'react';
 import { TimetableEntry, DayOfWeek } from '../../types';
 import { storageService } from '../../services/storageService';
 import { useLookups } from '../../hooks/useLookups';
-import { timeToMinutes, formatTime12h } from '../../utils/timeUtils';
+import { timeToMinutes, formatTime12h, campusNow } from '../../utils/timeUtils';
 import { Clock, MapPin, User, BookOpen, Layers, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface DailyTimetableListProps {
@@ -15,7 +15,7 @@ interface DailyTimetableListProps {
 export const DailyTimetableList: React.FC<DailyTimetableListProps> = ({
   entries,
   day,
-  currentTime = '10:00',
+  currentTime = campusNow().time,
   onSelectEntry
 }) => {
   const { subjects, faculty: facultyList, rooms, buildings, floors, sections } = useLookups();

@@ -1,13 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiService } from '../../services/apiService';
 import { useApiResource } from '../../hooks/useApiResource';
 import { Subject, Room, TimetableEntry, DayOfWeek } from '../../types';
-import { DAYS_OF_WEEK, timeToMinutes } from '../../utils/timeUtils';
+import { DAYS_OF_WEEK, timeToMinutes, campusNow } from '../../utils/timeUtils';
+import { useCampusClock } from '../../hooks/useCampusClock';
 import { Clock } from 'lucide-react';
 
 export const FacultyAvailabilityPage: React.FC = () => {
-  const [selectedDay, setSelectedDay] = useState<DayOfWeek>('Monday');
-  const [simulatedTime, setSimulatedTime] = useState('10:00');
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(campusNow().day);
+  const [simulatedTime, setSimulatedTime] = useState(campusNow().time);
+  const [timeOverridden, setTimeOverridden] = useState(false);
+  const clock = useCampusClock();
+  useEffect(() => {
+    if (!timeOverridden) setSimulatedTime(clock.time);
+  }, [clock.time, timeOverridden]);
 
   const { data: schedule, loading, error } = useApiResource<TimetableEntry[]>(
     () => apiService.getFacultyTimetable(),
@@ -57,7 +63,7 @@ export const FacultyAvailabilityPage: React.FC = () => {
           <input
             type="time"
             value={simulatedTime}
-            onChange={e => setSimulatedTime(e.target.value)}
+            onChange={e => { setTimeOverridden(true); setSimulatedTime(e.target.value); }}
             className="p-2 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
           />
         </div>

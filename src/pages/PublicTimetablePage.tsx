@@ -9,6 +9,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { apiService } from '../services/apiService';
+import { useCampusClock } from '../hooks/useCampusClock';
 import {
   Department,
   AcademicYear,
@@ -22,7 +23,7 @@ import {
 } from '../types';
 import { WeeklyTimetableGrid } from '../components/timetable/WeeklyTimetableGrid';
 import { DailyTimetableList } from '../components/timetable/DailyTimetableList';
-import { DAYS_OF_WEEK, selectBellEntries } from '../utils/timeUtils';
+import { DAYS_OF_WEEK, selectBellEntries, campusNow } from '../utils/timeUtils';
 
 export const PublicTimetablePage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -46,7 +47,8 @@ export const PublicTimetablePage: React.FC = () => {
 
   // Results & View
   const [viewMode, setViewMode] = useState<'weekly' | 'daily'>('weekly');
-  const [activeDay, setActiveDay] = useState<DayOfWeek>('Monday');
+  const [activeDay, setActiveDay] = useState<DayOfWeek>(campusNow().day);
+  const clock = useCampusClock();
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
   // Times drawn even when this section is free, so its day is not cut short.
   const [bellEntries, setBellEntries] = useState<TimetableEntry[]>([]);
@@ -434,9 +436,9 @@ export const PublicTimetablePage: React.FC = () => {
               </p>
             </div>
           ) : viewMode === 'weekly' ? (
-            <WeeklyTimetableGrid entries={timetableEntries} bellEntries={bellEntries} />
+            <WeeklyTimetableGrid entries={timetableEntries} bellEntries={bellEntries} currentDay={clock.day} currentTime={clock.time} />
           ) : (
-            <DailyTimetableList entries={timetableEntries} day={activeDay} />
+            <DailyTimetableList entries={timetableEntries} day={activeDay} currentTime={clock.time} />
           )}
         </div>
       )}

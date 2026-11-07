@@ -3,14 +3,14 @@ import { WeeklyTimetableGrid } from '../../components/timetable/WeeklyTimetableG
 import { DailyTimetableList } from '../../components/timetable/DailyTimetableList';
 import { useAuth } from '../../hooks/useAuth';
 import { timetableService } from '../../services/timetableService';
-import { DAYS_OF_WEEK } from '../../utils/timeUtils';
+import { DAYS_OF_WEEK, campusNow } from '../../utils/timeUtils';
 import { DayOfWeek } from '../../types';
 import { Calendar, Printer, Download, Sparkles } from 'lucide-react';
 
 export const StudentTimetablePage: React.FC = () => {
   const { session } = useAuth();
   const [viewMode, setViewMode] = useState<'weekly' | 'daily'>('weekly');
-  const [activeDay, setActiveDay] = useState<DayOfWeek>('Monday');
+  const [activeDay, setActiveDay] = useState<DayOfWeek>(campusNow().day);
 
   const sectionId = session?.sectionId || session?.group || 'sec-cse-3a';
   const entries = timetableService.getStudentSchedule(sectionId);

@@ -26,7 +26,8 @@ import {
   Room,
   Building
 } from '../../types';
-import { timeToMinutes, DAYS_OF_WEEK } from '../../utils/timeUtils';
+import { timeToMinutes, DAYS_OF_WEEK, campusNow } from '../../utils/timeUtils';
+import { useCampusClock } from '../../hooks/useCampusClock';
 import { WeeklyTimetableGrid } from '../../components/timetable/WeeklyTimetableGrid';
 import { DailyTimetableList } from '../../components/timetable/DailyTimetableList';
 
@@ -35,8 +36,13 @@ export const StudentDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedDay, setSelectedDay] = useState<DayOfWeek>('Monday');
-  const [simulatedTime, setSimulatedTime] = useState('10:00');
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(campusNow().day);
+  const [simulatedTime, setSimulatedTime] = useState(campusNow().time);
+  const [timeOverridden, setTimeOverridden] = useState(false);
+  const clock = useCampusClock();
+  useEffect(() => {
+    if (!timeOverridden) setSimulatedTime(clock.time);
+  }, [clock.time, timeOverridden]);
   const [viewMode, setViewMode] = useState<'daily' | 'weekly'>('daily');
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
 
@@ -168,7 +174,7 @@ export const StudentDashboard: React.FC = () => {
               <input
                 type="time"
                 value={simulatedTime}
-                onChange={e => setSimulatedTime(e.target.value)}
+                onChange={e => { setTimeOverridden(true); setSimulatedTime(e.target.value); }}
                 className="bg-slate-900/80 text-white border border-white/20 rounded-lg px-2 py-1 text-xs font-mono font-bold"
               />
             </div>
