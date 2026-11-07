@@ -257,121 +257,38 @@ async function main() {
     }
   })
 
-  // 9. Periods
-  const periods = [
-    { p: 1, start: '08:15', end: '09:05' },
-    { p: 2, start: '09:05', end: '09:55' },
-    // Break 09:55 - 10:05
-    { p: 3, start: '10:05', end: '10:55' },
-    { p: 4, start: '10:55', end: '11:45' },
-    // Break 11:45 - 11:55
-    { p: 5, start: '11:55', end: '12:45' },
-    { p: 6, start: '12:45', end: '13:35' },
-    // Lunch 13:35 - 14:25
-    { p: 7, start: '14:25', end: '15:15' },
-    { p: 8, start: '15:15', end: '16:05' },
-    { p: 9, start: '16:05', end: '16:55' },
-  ]
-
-  // 10. Official Real II AIML-J Timetable Entries (w.e.f. 17-08-2026)
-  const existingEntriesCount = await prisma.entry.count({ where: { groupId: group.id } })
-
-  const realAssignments: Array<{ day: string; pIdx: number; room: string; subject: string; type: string }> = [
-    // MON: N-217, LAB-1(Library), N-617, N-617
-    { day: 'MON', pIdx: 0, room: 'N-217', subject: 'Data Structures & Algorithms', type: 'class' },
-    { day: 'MON', pIdx: 2, room: 'N-617', subject: 'Operating Systems', type: 'class' },
-    { day: 'MON', pIdx: 6, room: 'N-617', subject: 'Machine Learning Lab', type: 'lab' },
-    { day: 'MON', pIdx: 7, room: 'N-617', subject: 'Machine Learning Lab', type: 'lab' },
-
-    // TUE: N-607, N-514B, N-615
-    { day: 'TUE', pIdx: 0, room: 'N-607', subject: 'Database Management Systems', type: 'class' },
-    { day: 'TUE', pIdx: 3, room: 'N-514B', subject: 'Discrete Mathematics', type: 'class' },
-    { day: 'TUE', pIdx: 7, room: 'N-615', subject: 'Design & Analysis of Algorithms', type: 'class' },
-
-    // WED: N-217, N-606, N-611, N-611, N-615
-    { day: 'WED', pIdx: 0, room: 'N-217', subject: 'Data Structures & Algorithms', type: 'class' },
-    { day: 'WED', pIdx: 2, room: 'N-606', subject: 'Operating Systems', type: 'class' },
-    { day: 'WED', pIdx: 3, room: 'N-611', subject: 'AI Foundations', type: 'class' },
-    { day: 'WED', pIdx: 4, room: 'N-611', subject: 'AI Foundations', type: 'class' },
-    { day: 'WED', pIdx: 7, room: 'N-615', subject: 'Design & Analysis of Algorithms', type: 'class' },
-
-    // THU: N-617, LAB-1(LIB), N-617
-    { day: 'THU', pIdx: 0, room: 'N-617', subject: 'Database Management Systems', type: 'class' },
-    { day: 'THU', pIdx: 7, room: 'N-617', subject: 'Operating Systems Lab', type: 'lab' },
-
-    // FRI: N-215, N-607, N-607, N-617
-    { day: 'FRI', pIdx: 0, room: 'N-215', subject: 'Discrete Mathematics', type: 'class' },
-    { day: 'FRI', pIdx: 2, room: 'N-607', subject: 'Database Management Systems', type: 'class' },
-    { day: 'FRI', pIdx: 3, room: 'N-607', subject: 'AI Foundations', type: 'class' },
-    { day: 'FRI', pIdx: 6, room: 'N-617', subject: 'Seminar / Presentation', type: 'class' },
-
-    // SAT: N-618, N-618, N-217, N-217, N-606
-    { day: 'SAT', pIdx: 0, room: 'N-618', subject: 'Advanced Python for AI', type: 'lab' },
-    { day: 'SAT', pIdx: 1, room: 'N-618', subject: 'Advanced Python for AI', type: 'lab' },
-    { day: 'SAT', pIdx: 2, room: 'N-217', subject: 'Data Structures & Algorithms', type: 'class' },
-    { day: 'SAT', pIdx: 3, room: 'N-217', subject: 'Design & Analysis of Algorithms', type: 'class' },
-    { day: 'SAT', pIdx: 4, room: 'N-606', subject: 'Mentorship & Review', type: 'class' },
-  ]
-
-  if (existingEntriesCount === 0) {
-    for (const item of realAssignments) {
-      const p = periods[item.pIdx]
-      await prisma.entry.create({
-        data: {
-          sourceFileId: sourceFile.id,
-          groupId: group.id,
-          roomId: item.room,
-          facultyId: demoFaculty.id,
-          day: item.day,
-          startTime: p.start,
-          endTime: p.end,
-          subject: item.subject,
-          entryType: item.type,
-          is_mock: false,
-          is_live: true
-        }
-      })
-    }
-
-    // Library non-room slots (from II AIML-J sheet)
-    await prisma.entry.create({
-      data: {
-        sourceFileId: sourceFile.id,
-        groupId: group.id,
-        roomId: null,
-        day: 'MON',
-        startTime: periods[2].start,
-        endTime: periods[2].end,
-        subject: 'Central Library Reference Slot (LAB-1)',
-        entryType: 'library',
-        is_mock: false,
-        is_live: true
-      }
-    })
-    await prisma.entry.create({
-      data: {
-        sourceFileId: sourceFile.id,
-        groupId: group.id,
-        roomId: null,
-        day: 'THU',
-        startTime: periods[2].start,
-        endTime: periods[2].end,
-        subject: 'Central Library Slot (LAB-1 LIB)',
-        entryType: 'library',
-        is_mock: false,
-        is_live: true
-      }
-    })
-  } else {
-    console.log("- Skipping timetable entries re-insert: entries already exist.")
-  }
-
-  // 11. Ingest Full University Department Timetables (ECE, CSE 3rd Year, SASH, Bioinformatics)
+  // 9. Ingest every department timetable from the compiled dataset. This is the
+  // single source of timetable truth: sections are never re-typed by hand,
+  // because a hand-made copy drifts from the sheet it claims to mirror.
   const compiledPath = path.join(__dirname, '../server/data/all_compiled_timetables.json')
   if (fs.existsSync(compiledPath)) {
     console.log("Seeding full university timetables from compiled dataset...")
     const rawCompiled = fs.readFileSync(compiledPath, 'utf-8')
     const compiledData = JSON.parse(rawCompiled)
+
+    // Earlier releases shipped a synthetic coverage generator that invented
+    // sections and staff for departments whose sheets had not been supplied.
+    // Those rows are marked is_mock and are removed here so a redeploy cannot
+    // keep serving them next to the real data.
+    const purgedEntries = await prisma.entry.deleteMany({ where: { is_mock: true } })
+    const purgedFaculty = await prisma.faculty.deleteMany({
+      where: { is_mock: true, entries: { none: {} } }
+    })
+    if (purgedEntries.count || purgedFaculty.count) {
+      console.log(`- Purged ${purgedEntries.count} synthetic entries and ${purgedFaculty.count} unused placeholder faculty`)
+    }
+
+    // The same generator also created empty section rows that no sheet ever
+    // filled. A section with no periods is a dead entry in every dropdown, so
+    // remove any group the compiled dataset does not define.
+    const compiledGroupNames = new Set(compiledData.groups.map((g: { name: string }) => g.name))
+    const allGroups = await prisma.group.findMany({ select: { id: true, name: true } })
+    const staleGroupIds = allGroups.filter(g => !compiledGroupNames.has(g.name)).map(g => g.id)
+    if (staleGroupIds.length) {
+      await prisma.entry.deleteMany({ where: { groupId: { in: staleGroupIds } } })
+      const purgedGroups = await prisma.group.deleteMany({ where: { id: { in: staleGroupIds } } })
+      console.log(`- Purged ${purgedGroups.count} empty placeholder sections`)
+    }
 
     // 11.1 Upsert Departments
     const deptMap = new Map<string, string>()
@@ -462,73 +379,104 @@ async function main() {
     // Faculty names from the source legend are free text and may list several
     // people per slot; the first name is used as the primary instructor and
     // generic labels like "CSE Faculty (CN)" stay unlinked.
-    const facultyIdByName = new Map<string, string>()
+    const facultyIdByKey = new Map<string, string>()
     let facultyCount = 0
-    const facultyIdFor = async (raw: string | null | undefined): Promise<string | null> => {
+    // The same teacher is written several ways across legends ("Dr. Shakila
+    // Banu-", "Dr. Shakila Banu", "DR. S. VINOTH"). Key on a form that ignores
+    // case, punctuation and spacing so the spellings collapse into one row.
+    const facultyKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const facultyIdFor = async (raw: string | null | undefined, departmentId?: string | null): Promise<string | null> => {
       if (!raw) return null
-      const primary = raw.split(/[,;]/)[0].replace(/\s+/g, ' ').trim().replace(/[.]+$/, '')
+      // Strip a trailing separator before the generic-label test, otherwise a
+      // legend cell like "DR. S. VINOTH -" reads as a label and stays unlinked.
+      const primary = raw.split(/[,;]/)[0].replace(/\s+/g, ' ').trim().replace(/[\s,;:./\\|-]+$/, '')
       if (!primary || /faculty/i.test(primary) || primary.length < 4) return null
-      const cached = facultyIdByName.get(primary)
+      const key = facultyKey(primary)
+      const cached = facultyIdByKey.get(key)
       if (cached) return cached
-      const code = `fac-${primary.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}`
+      const code = `fac-${primary.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48)}`
       const rec = await prisma.faculty.upsert({
         where: { code },
-        update: { name: primary },
-        create: { code, name: primary }
+        update: { name: primary, departmentId: departmentId || null },
+        create: { code, name: primary, departmentId: departmentId || null }
       })
-      facultyIdByName.set(primary, rec.id)
+      facultyIdByKey.set(key, rec.id)
       facultyCount++
       return rec.id
     }
 
+    // The compiled dataset is the single source of truth for timetables, so each
+    // group's rows are replaced wholesale rather than merged. Matching on
+    // (group, day, start time) cannot reconcile a period that moved (ECE's 01:30
+    // becoming 13:30) and would leave the old row behind.
+    const compiledGroupIds = Array.from(groupMap.values())
+    await prisma.entry.deleteMany({ where: { groupId: { in: compiledGroupIds } } })
+
+    // Room labels are free text in the workbooks, so a handful do not match a
+    // catalogue room ("Sravanthi Seminar Hall [H Block]"). An unknown room is
+    // left unset instead of failing the whole seed on a foreign key.
+    const knownRoomIds = new Set(
+      (await prisma.room.findMany({ select: { id: true } })).map(r => r.id)
+    )
+
     let newEntriesCount = 0
-    let updatedEntriesCount = 0
     for (const entry of compiledData.entries) {
       const gId = groupMap.get(entry.group)
       if (!gId) continue
 
       const rId = entry.room ? entry.room.trim().toUpperCase() : null
-      const roomId = rId && rId !== 'MOBILE' ? rId : null
-      const facultyId = await facultyIdFor(entry.faculty)
-      const subject = entry.subject ?? null
+      const roomId = rId && rId !== 'MOBILE' && knownRoomIds.has(rId) ? rId : null
 
-      const existing = await prisma.entry.findFirst({
-        where: { groupId: gId, day: entry.day, startTime: entry.startTime },
-        select: { id: true, facultyId: true, roomId: true, subject: true }
-      })
-
-      if (!existing) {
-        await prisma.entry.create({
-          data: {
-            sourceFileId: sourceFile.id,
-            groupId: gId,
-            roomId,
-            facultyId,
-            day: entry.day,
-            startTime: entry.startTime,
-            endTime: entry.endTime,
-            subject,
-            entryType: entry.entryType || 'class',
-            is_mock: false,
-            is_live: true
-          }
-        })
-        newEntriesCount++
-      } else {
-        // Subject and faculty are derived from the workbook and are safe to
-        // refresh. Rooms are deliberately left alone: the curated demo rows
-        // carry hand-assigned rooms that the raw grid data must not clobber.
-        const patch: { facultyId?: string; subject?: string } = {}
-        if (facultyId && existing.facultyId !== facultyId) patch.facultyId = facultyId
-        if (subject && existing.subject !== subject) patch.subject = subject
-        if (Object.keys(patch).length > 0) {
-          await prisma.entry.update({ where: { id: existing.id }, data: patch })
-          updatedEntriesCount++
+      await prisma.entry.create({
+        data: {
+          sourceFileId: sourceFile.id,
+          groupId: gId,
+          roomId,
+          facultyId: await facultyIdFor(entry.faculty, entry.departmentCode ? deptMap.get(entry.departmentCode) : null),
+          day: entry.day,
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          subject: entry.subject ?? null,
+          entryType: entry.entryType || 'class',
+          is_mock: false,
+          is_live: true
         }
-      }
+      })
+      newEntriesCount++
     }
-    console.log(`- Ingested ${compiledData.groups.length} university groups, ${newEntriesCount} new and ${updatedEntriesCount} refreshed entries`)
+    console.log(`- Ingested ${compiledData.groups.length} university groups, ${newEntriesCount} entries written`)
     console.log(`- Linked ${facultyCount} distinct faculty from source legends`)
+
+      // Earlier builds created one faculty row per name spelling, so a teacher
+      // whose legend entry was cleaned up here still lingers under the old
+      // spelling with no timetable attached. Those rows only pollute the
+      // faculty pickers and free-slot list, so drop the ones nothing points at.
+      const orphanFaculty = await prisma.faculty.findMany({
+        where: { entries: { none: {} }, user: { is: null } },
+        select: { id: true }
+      })
+      if (orphanFaculty.length) {
+        const purged = await prisma.faculty.deleteMany({
+          where: { id: { in: orphanFaculty.map(f => f.id) } }
+        })
+        console.log(`- Purged ${purged.count} orphan faculty records`)
+      }
+
+    // The demo faculty login must resolve to a teacher who actually appears in
+    // the compiled timetables, otherwise its dashboard is empty. Point it at the
+    // busiest real teacher and drop the placeholder record.
+    const busiest = await prisma.faculty.findFirst({
+      where: { entries: { some: {} } },
+      orderBy: { entries: { _count: 'desc' } }
+    })
+    if (busiest) {
+      await prisma.user.updateMany({
+        where: { role: 'faculty', facultyId: demoFaculty.id },
+        data: { facultyId: busiest.id, name: busiest.name }
+      })
+      await prisma.faculty.deleteMany({ where: { id: demoFaculty.id, entries: { none: {} } } })
+      console.log(`- Demo faculty login mapped to ${busiest.name}`)
+    }
   }
 
   // Academic year + semester rows. The admin Academic Year and Semester tabs
@@ -553,15 +501,8 @@ async function main() {
   console.log(`Database seeded successfully!`)
   console.log(`- 5 Blocks & floors`)
   console.log(`- ${confirmedRooms.length} Confirmed/Inferred Rooms`)
-  console.log(`- Demo Section: II AIML-J (${realAssignments.length + 2} real entries, is_mock: false)`)
   console.log(`- 3 Demo User accounts created`)
 
-  // Synthetic coverage for the sections whose sheets have not been supplied yet.
-  // Opt out with SEED_SYNTHETIC_SECTIONS=false.
-  if (process.env.SEED_SYNTHETIC_SECTIONS !== 'false') {
-    const { seedDemoSections } = await import('./seedDemoSections')
-    await seedDemoSections(prisma)
-  }
 }
 
 main()

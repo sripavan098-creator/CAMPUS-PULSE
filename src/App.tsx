@@ -61,12 +61,8 @@ const AppRoutes: React.FC = () => {
         <Route path="/availability" element={<AvailabilityPage />} />
         <Route path="/campus" element={<CampusExplorerPage />} />
 
-        {/* DEDICATED BUILDING ROUTES */}
-        <Route path="/campus/vignan-bhavan" element={<BuildingDetailPage />} />
-        <Route path="/campus/aryabhata-bhavan" element={<BuildingDetailPage />} />
-        <Route path="/campus/nagarjuna-block" element={<BuildingDetailPage />} />
-        <Route path="/campus/h-block" element={<BuildingDetailPage />} />
-        <Route path="/campus/library" element={<BuildingDetailPage />} />
+        {/* One param route: a static route defines no :slug param, so the
+            page would read an undefined slug and fall back to a fixed block. */}
         <Route path="/campus/:slug" element={<BuildingDetailPage />} />
 
         <Route path="/about" element={<AboutPage />} />

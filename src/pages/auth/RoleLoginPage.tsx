@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Logo } from '../../components/common/Logo';
 import { useAuth } from '../../hooks/useAuth';
 import { Role } from '../../types';
-import { DEMO_CREDENTIALS } from '../../services/authService';
+import { DEMO_CREDENTIALS, demoCredentialsConfigured } from '../../services/authService';
 import {
   Eye,
   EyeOff,
@@ -100,7 +100,9 @@ export const RoleLoginPage: React.FC<RoleLoginPageProps> = ({ role }) => {
           </p>
         </div>
 
-        {/* Demo Fast-Login Notice Banner */}
+        {/* Demo Fast-Login Notice Banner. Hidden when the deployment has not
+            configured the seed credentials, because the values shown would fail. */}
+        {demoCredentialsConfigured() && (
         <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-xs text-amber-900 space-y-2 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="font-bold flex items-center gap-1.5 text-amber-800">
@@ -120,6 +122,7 @@ export const RoleLoginPage: React.FC<RoleLoginPageProps> = ({ role }) => {
             Pass: <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold text-slate-800">{credentials.password}</code>
           </p>
         </div>
+        )}
 
         {/* Form Card */}
         <div className="bg-white rounded-3xl border border-slate-200 shadow-xl p-8">

@@ -3,33 +3,50 @@ import { apiService } from './apiService';
 
 const SESSION_KEY = 'cp_user_session';
 
+// The demo accounts are created by prisma/seed.ts, which reads the addresses and
+// passwords from ADMIN_/FACULTY_/STUDENT_SEED_* environment variables. The login
+// page shows whatever this resolves to, so a deployment only has to configure the
+// VITE_* twins of those variables (or the *_SEED_* ones) to keep the advertised
+// credentials working; no password is hard-coded in the bundle.
+const envValue = (...names: string[]): string => {
+  const env = (import.meta.env ?? {}) as Record<string, string | undefined>;
+  for (const name of names) {
+    const value = env[name];
+    if (value) return value;
+  }
+  return '';
+};
+
 export const DEMO_CREDENTIALS = {
   admin: {
-    email: 'admin@vignan.ac.in',
-    password: 'admin123',
+    email: envValue('VITE_ADMIN_SEED_EMAIL', 'ADMIN_SEED_EMAIL'),
+    password: envValue('VITE_ADMIN_SEED_PASSWORD', 'ADMIN_SEED_PASSWORD'),
     role: 'admin' as Role,
-    name: 'Dr. Ch. Srinivas',
+    name: 'Administrator (HOD)',
     identifier: 'VFSTR-ADMIN-01',
     departmentId: 'All'
   },
   faculty: {
-    email: 'k_radhakrishna@vignan.ac.in',
-    password: 'faculty123',
+    email: envValue('VITE_FACULTY_SEED_EMAIL', 'FACULTY_SEED_EMAIL'),
+    password: envValue('VITE_FACULTY_SEED_PASSWORD', 'FACULTY_SEED_PASSWORD'),
     role: 'faculty' as Role,
-    name: 'Dr. K. Radhakrishna',
+    name: 'Dr. S. Vinoth',
     identifier: 'VFSTR-FAC-101',
     departmentId: 'dept-cse'
   },
   student: {
-    email: 'rahul.211fa04001@vignan.ac.in',
-    password: 'student123',
+    email: envValue('VITE_STUDENT_SEED_EMAIL', 'STUDENT_SEED_EMAIL'),
+    password: envValue('VITE_STUDENT_SEED_PASSWORD', 'STUDENT_SEED_PASSWORD'),
     role: 'student' as Role,
-    name: 'Rahul Sharma',
+    name: 'Pavan (Student Representative)',
     identifier: '211FA04001',
     departmentId: 'dept-cse',
     sectionId: 'sec-cse-3a'
   }
 };
+
+export const demoCredentialsConfigured = (): boolean =>
+  Boolean(DEMO_CREDENTIALS.admin.email && DEMO_CREDENTIALS.faculty.email && DEMO_CREDENTIALS.student.email);
 
 export const authService = {
   getCurrentSession(): UserSession | null {

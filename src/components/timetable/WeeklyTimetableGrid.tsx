@@ -1,6 +1,6 @@
 import React from 'react';
 import { TimetableEntry, DayOfWeek } from '../../types';
-import { DAYS_OF_WEEK, TIME_SLOTS, formatTime12h, timeToMinutes } from '../../utils/timeUtils';
+import { DAYS_OF_WEEK, buildTimetableColumns, formatTime12h, timeToMinutes } from '../../utils/timeUtils';
 import { storageService } from '../../services/storageService';
 import { useLookups } from '../../hooks/useLookups';
 import { Clock, MapPin, User, BookOpen } from 'lucide-react';
@@ -11,6 +11,12 @@ interface WeeklyTimetableGridProps {
   currentTime?: string;
   onSelectEntry?: (entry: TimetableEntry) => void;
   showSection?: boolean;
+  /**
+   * Extra entries used only to widen the column set. A section that is free
+   * during a period still needs that column drawn, otherwise its day looks
+   * shorter than it is.
+   */
+  bellEntries?: { startTime: string; endTime: string }[];
 }
 
 export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
@@ -18,7 +24,8 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
   currentDay = 'Monday',
   currentTime = '10:00',
   onSelectEntry,
-  showSection = true
+  showSection = true,
+  bellEntries
 }) => {
   const { subjects, faculty: facultyList, rooms, buildings, sections } = useLookups();
 
@@ -30,18 +37,15 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
 
   const currentMin = timeToMinutes(currentTime);
 
-    // Assign every entry to the single period it starts in. Overlap matching
-    // drew a class that straddles a break into two columns.
+    // Columns are derived from the entries themselves: departments do not share
+    // a bell schedule, so a fixed slot list either drops classes or files them
+    // under the wrong time.
+    const columns = buildTimetableColumns(bellEntries ? [...entries, ...bellEntries] : entries);
+    // Keying on the start time (not the column index) keeps a class on its own
+    // row even when another section's grid has a different set of columns.
     const entryBySlot = new Map<string, TimetableEntry>();
     for (const entry of entries) {
-      const entryStart = timeToMinutes(entry.startTime);
-      let bestIdx = -1;
-      TIME_SLOTS.forEach((slot, i) => {
-        if (slot.isBreak) return;
-        if (timeToMinutes(slot.start) <= entryStart) bestIdx = i;
-      });
-      if (bestIdx === -1) bestIdx = TIME_SLOTS.findIndex(slot => !slot.isBreak);
-      const key = `${entry.day}-${bestIdx}`;
+      const key = `${entry.day}-${entry.startTime}`;
       if (!entryBySlot.has(key)) entryBySlot.set(key, entry);
     }
 
@@ -54,16 +58,16 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
               <th className="py-3 px-3 w-28 text-left font-bold uppercase tracking-wider text-[11px] bg-slate-200/60 sticky left-0 z-10">
                 Day \ Time
               </th>
-              {TIME_SLOTS.map((slot, idx) => (
+              {columns.map(column => (
                 <th
-                  key={idx}
+                  key={column.key}
                   className={`py-3 px-2 text-center font-bold border-l border-slate-200/80 ${
-                    slot.isBreak ? 'bg-amber-50/70 text-amber-900 w-24' : 'text-slate-700 min-w-[120px]'
+                    column.kind === 'period' ? 'text-slate-700 min-w-[120px]' : 'bg-amber-50/70 text-amber-900 w-24'
                   }`}
                 >
-                  <div className="text-[11px] font-mono">{slot.start} - {slot.end}</div>
+                  <div className="text-[11px] font-mono">{formatTime12h(column.start)} - {formatTime12h(column.end)}</div>
                   <div className="text-[9px] font-normal text-slate-500 uppercase tracking-wide">
-                    {slot.isBreak ? slot.label : `Period ${(slot as any).period}`}
+                    {column.label}
                   </div>
                 </th>
               ))}
@@ -88,24 +92,24 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
                   </td>
 
                   {/* Period cells */}
-                  {TIME_SLOTS.map((slot, slotIdx) => {
-                    if (slot.isBreak) {
+                  {columns.map(column => {
+                    if (column.kind !== 'period') {
                       return (
                         <td
-                          key={slotIdx}
+                          key={column.key}
                           className="bg-amber-50/40 border-l border-slate-200 text-center py-2 px-1 text-[10px] text-amber-800/80 font-medium select-none"
                         >
-                          {slot.label}
+                          {column.label}
                         </td>
                       );
                     }
 
-                    const matchingEntry = entryBySlot.get(`${day}-${slotIdx}`);
+                    const matchingEntry = entryBySlot.get(`${day}-${column.start}`);
 
                     if (!matchingEntry) {
                       return (
                         <td
-                          key={slotIdx}
+                          key={column.key}
                           className="border-l border-slate-200/70 p-2 text-center text-slate-300 font-mono text-[11px]"
                         >
                           —
@@ -126,7 +130,7 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
 
                     return (
                       <td
-                        key={slotIdx}
+                        key={column.key}
                         onClick={() => onSelectEntry && onSelectEntry(matchingEntry)}
                         className="border-l border-slate-200/70 p-1.5"
                       >

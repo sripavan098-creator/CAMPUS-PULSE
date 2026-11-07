@@ -17,7 +17,7 @@ import { Room, Building, Floor } from '../../types';
 import { timetableService } from '../../services/timetableService';
 import { storageService } from '../../services/storageService';
 import { useLookups } from '../../hooks/useLookups';
-import { formatTime12h, TIME_SLOTS } from '../../utils/timeUtils';
+import { formatTime12h } from '../../utils/timeUtils';
 
 interface RoomDetailModalProps {
   room: Room | null;

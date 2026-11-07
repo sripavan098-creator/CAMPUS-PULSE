@@ -141,10 +141,13 @@ describe('phase-2 fixes', () => {
   })
 
   it('records a disruption and reports a failed-check body when approval goes stale', async () => {
+    // Use any live Monday class that occupies a room, instead of a room code
+    // from the retired synthetic dataset that no longer has any periods.
     const entry = await prisma.entry.findFirst({
-      where: { day: 'MON', roomId: 'N-217', is_live: true }
+      where: { day: 'MON', is_live: true, roomId: { not: null } }
     })
     expect(entry).not.toBeNull()
+    const roomId = entry!.roomId!
 
     const dis = await request(app)
       .post('/api/admin/disruptions')
@@ -152,7 +155,7 @@ describe('phase-2 fixes', () => {
       .set('x-csrf-token', csrf)
       .send({
         entryId: entry!.id,
-        roomId: 'N-217',
+        roomId,
         type: 'room_closure',
         reason: 'test',
         affectedDay: 'MON',
