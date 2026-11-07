@@ -22,6 +22,20 @@ describe('roomMatchKey', () => {
     expect(roomMatchKey('N-107 (LAB)')).toBe(roomMatchKey('N-107'));
   });
 
+  it('drops a square-bracket qualifier too', () => {
+    expect(roomMatchKey('SRAVANTHI SEMINAR HALL [H BLOCK]')).toBe(roomMatchKey('SRAVANTHI SEMINAR HALL'));
+  });
+
+  it('treats a separated FLOOR note as a location, not part of the code', () => {
+    expect(roomMatchKey('LAB-2(LIB)-2 FLOOR')).toBe(roomMatchKey('LAB-2'));
+    expect(roomMatchKey('LAB-2(LIB 2 FLOOR)')).toBe(roomMatchKey('LAB-2'));
+  });
+
+  it('keeps a FLOOR form glued to the code, which may be a room number', () => {
+    expect(roomMatchKey('LAB-12FLOOR')).not.toBe(roomMatchKey('LAB-12'));
+    expect(roomMatchKey('LAB-22FLOOR')).not.toBe(roomMatchKey('LAB-2'));
+  });
+
   it('returns null for empty input', () => {
     expect(roomMatchKey(null)).toBeNull();
     expect(roomMatchKey(undefined)).toBeNull();

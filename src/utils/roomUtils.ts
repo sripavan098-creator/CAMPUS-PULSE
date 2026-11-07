@@ -16,8 +16,9 @@
 /**
  * Aggressive key for grouping spellings of the same room. Not for display.
  * Rules, applied in order:
- *   1. drop a bracketed qualifier ("LAB-2(LIB)-2 FLOOR" -> "LAB-2"), since the
- *      qualifier is a note about the room, not part of its code
+ *   1. drop a bracketed qualifier, round or square ("LAB-2(LIB)-2 FLOOR" and
+ *      "SRAVANTHI SEMINAR HALL [H BLOCK]"), since the qualifier is a note about
+ *      the room, not part of its code
  *   2. drop spaces and hyphens (so "VBFF 1" and "VBFF-1" agree)
  *   3. reinsert a single hyphen between a leading letter prefix and its number
  *      ("VBFF1" -> "VBFF-1"), which keeps blocks like NB/VBFFTF readable
@@ -31,7 +32,13 @@ export function roomMatchKey(raw: string | null | undefined): string | null {
   if (raw === null || raw === undefined) return null;
   let s = String(raw).trim().toUpperCase();
   if (!s) return null;
-  s = s.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  s = s.replace(/\([^)]*\)/g, ' ').replace(/\[[^\]]*\]/g, ' ');
+  s = s.replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  // A "FLOOR" note separated from the code by whitespace is a location note, not
+  // part of the code ("LAB-2 -2 FLOOR" -> "LAB-2"). A form glued to the code
+  // ("LAB-12FLOOR") is left alone, since it may be a room number.
+  s = s.replace(/\s+[-\u2013]?\s*\d*\s*FLOOR\b/g, ' ').replace(/\s+/g, ' ').trim();
   if (!s) return null;
   s = s.replace(/[\s-]+/g, '');
   s = s.replace(/^([A-Z]+)(\d.*)$/, '$1-$2');
