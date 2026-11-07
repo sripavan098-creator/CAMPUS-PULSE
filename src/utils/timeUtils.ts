@@ -1,16 +1,18 @@
 import { DayOfWeek } from '../types';
 
 export const TIME_SLOTS = [
-  { start: '08:30', end: '09:20', label: 'Period 1 (08:30 - 09:20)' },
-  { start: '09:20', end: '10:10', label: 'Period 2 (09:20 - 10:10)' },
-  { start: '10:10', end: '10:30', label: 'Morning Break (10:10 - 10:30)', isBreak: true },
-  { start: '10:30', end: '11:20', label: 'Period 3 (10:30 - 11:20)' },
-  { start: '11:20', end: '12:10', label: 'Period 4 (11:20 - 12:10)' },
-  { start: '12:10', end: '13:00', label: 'Lunch Break (12:10 - 01:00)', isBreak: true },
-  { start: '13:00', end: '13:50', label: 'Period 5 (01:00 - 01:50)' },
-  { start: '13:50', end: '14:40', label: 'Period 6 (01:50 - 02:40)' },
-  { start: '14:40', end: '15:30', label: 'Period 7 (02:40 - 03:30)' },
-  { start: '15:30', end: '16:20', label: 'Period 8 (03:30 - 04:20)' },
+  { start: '08:15', end: '09:05', label: 'Period 1', period: 1 },
+  { start: '09:05', end: '09:55', label: 'Period 2', period: 2 },
+  { start: '09:55', end: '10:05', label: 'Break', isBreak: true },
+  { start: '10:05', end: '10:55', label: 'Period 3', period: 3 },
+  { start: '10:55', end: '11:45', label: 'Period 4', period: 4 },
+  { start: '11:45', end: '11:55', label: 'Break', isBreak: true },
+  { start: '11:55', end: '12:45', label: 'Period 5', period: 5 },
+  { start: '12:45', end: '13:35', label: 'Period 6', period: 6 },
+  { start: '13:35', end: '14:25', label: 'Lunch', isBreak: true },
+  { start: '14:25', end: '15:15', label: 'Period 7', period: 7 },
+  { start: '15:15', end: '16:05', label: 'Period 8', period: 8 },
+  { start: '16:05', end: '16:55', label: 'Period 9', period: 9 },
 ];
 
 export const DAYS_OF_WEEK: DayOfWeek[] = [
@@ -37,8 +39,11 @@ export function minutesToTime(minutes: number): string {
 export function formatTime12h(timeStr: string): string {
   if (!timeStr) return '';
   const [h, m] = timeStr.split(':').map(Number);
-  const period = h >= 12 ? 'PM' : 'AM';
-  const displayHours = h % 12 === 0 ? 12 : h % 12;
+  // Source grids use a 12h clock without an AM/PM marker, so periods after
+  // lunch arrive as 01:30-04:xx. Anything before 06:00 is an afternoon slot.
+  const hour24 = h < 6 ? h + 12 : h;
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  const displayHours = hour24 % 12 === 0 ? 12 : hour24 % 12;
   return `${displayHours}:${m.toString().padStart(2, '0')} ${period}`;
 }
 

@@ -30,6 +30,21 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
 
   const currentMin = timeToMinutes(currentTime);
 
+    // Assign every entry to the single period it starts in. Overlap matching
+    // drew a class that straddles a break into two columns.
+    const entryBySlot = new Map<string, TimetableEntry>();
+    for (const entry of entries) {
+      const entryStart = timeToMinutes(entry.startTime);
+      let bestIdx = -1;
+      TIME_SLOTS.forEach((slot, i) => {
+        if (slot.isBreak) return;
+        if (timeToMinutes(slot.start) <= entryStart) bestIdx = i;
+      });
+      if (bestIdx === -1) bestIdx = TIME_SLOTS.findIndex(slot => !slot.isBreak);
+      const key = `${entry.day}-${bestIdx}`;
+      if (!entryBySlot.has(key)) entryBySlot.set(key, entry);
+    }
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
@@ -48,7 +63,7 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
                 >
                   <div className="text-[11px] font-mono">{slot.start} - {slot.end}</div>
                   <div className="text-[9px] font-normal text-slate-500 uppercase tracking-wide">
-                    {slot.isBreak ? 'Break' : `Period ${idx < 2 ? idx + 1 : idx < 5 ? idx : idx - 1}`}
+                    {slot.isBreak ? slot.label : `Period ${(slot as any).period}`}
                   </div>
                 </th>
               ))}
@@ -80,21 +95,12 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
                           key={slotIdx}
                           className="bg-amber-50/40 border-l border-slate-200 text-center py-2 px-1 text-[10px] text-amber-800/80 font-medium select-none"
                         >
-                          {slot.start === '10:10' ? 'Break' : 'Lunch'}
+                          {slot.label}
                         </td>
                       );
                     }
 
-                    // Find matching timetable entry
-                    const slotStartMin = timeToMinutes(slot.start);
-                    const slotEndMin = timeToMinutes(slot.end);
-
-                    const matchingEntry = entries.find(e => {
-                      if (e.day !== day) return false;
-                      const eStart = timeToMinutes(e.startTime);
-                      const eEnd = timeToMinutes(e.endTime);
-                      return eStart < slotEndMin && eEnd > slotStartMin;
-                    });
+                    const matchingEntry = entryBySlot.get(`${day}-${slotIdx}`);
 
                     if (!matchingEntry) {
                       return (
