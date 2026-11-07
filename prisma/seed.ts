@@ -442,6 +442,21 @@ async function main() {
     console.log(`- Ingested ${compiledData.groups.length} university groups, ${newEntriesCount} entries written`)
     console.log(`- Linked ${facultyCount} distinct faculty from source legends`)
 
+      // Earlier builds created one faculty row per name spelling, so a teacher
+      // whose legend entry was cleaned up here still lingers under the old
+      // spelling with no timetable attached. Those rows only pollute the
+      // faculty pickers and free-slot list, so drop the ones nothing points at.
+      const orphanFaculty = await prisma.faculty.findMany({
+        where: { entries: { none: {} }, user: { is: null } },
+        select: { id: true }
+      })
+      if (orphanFaculty.length) {
+        const purged = await prisma.faculty.deleteMany({
+          where: { id: { in: orphanFaculty.map(f => f.id) } }
+        })
+        console.log(`- Purged ${purged.count} orphan faculty records`)
+      }
+
     // The demo faculty login must resolve to a teacher who actually appears in
     // the compiled timetables, otherwise its dashboard is empty. Point it at the
     // busiest real teacher and drop the placeholder record.

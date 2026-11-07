@@ -105,7 +105,11 @@ function cleanFacultyName(raw) {
   name = name.replace(/\([^)]*\)/g, '');
   name = name.replace(/\d{6,}/g, '');
   name = name.replace(/\s+/g, ' ').trim();
-  name = name.replace(/[,\s]+$/, '');
+  // Legends use a trailing dash or stray bracket as a separator, which would
+  // otherwise split one teacher into two records (e.g. "Dr. U Sriranganath-").
+  name = name.replace(/[\s,;:./\\|-]+$/, '');
+  name = name.replace(/[(\[]+$/, '').trim();
+  name = name.replace(/[\s,;:./\\|-]+$/, '');
   if (!name || name.length < 3) return null;
   if (/^(faculty|hod|tt i\/c|coordinator|x+)$/i.test(name)) return null;
   if (/^(training|library|counsel)/i.test(name)) return null;
