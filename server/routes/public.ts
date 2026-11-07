@@ -613,7 +613,7 @@ function toTimetableEntry(e: {
   groupId: string | null
   faculty?: { name: string; departmentId: string | null } | null
   room?: { blockId: string; floorId: string | null } | null
-  group?: { name: string; year: number } | null
+  group?: { name: string; year: number; departmentId: string } | null
 }) {
   const dayName =
     e.day === 'MON' ? 'Monday' : e.day === 'TUE' ? 'Tuesday' : e.day === 'WED' ? 'Wednesday' :
@@ -623,7 +623,7 @@ function toTimetableEntry(e: {
     id: e.id,
     academicYearId: 'ay-2026-27',
     semesterId: 'sem-even-2026',
-    departmentId: e.faculty?.departmentId || 'dept-cse',
+    departmentId: e.group?.departmentId || 'dept-cse',
     yearOfStudy: e.group?.year || 2,
     sectionId: e.group?.name || e.groupId || '',
     subjectId: e.subject || '',

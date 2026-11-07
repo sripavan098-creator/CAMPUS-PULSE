@@ -1,394 +1,447 @@
+'use strict';
+
+/**
+ * Compile every department timetable workbook into one dataset.
+ *
+ * Sources (all supplied by the departments; nothing here is invented):
+ *   parsed_acse.json                    ACSE, already extracted from the sheet
+ *   ece_timetables.txt                  ECE II year, six sections
+ *   raw_workbooks/cse_3rd_year.xlsx     CSE III year, 22 sections
+ *   raw_workbooks/sash_division_4.xlsx  SASH I year, division 4 sections
+ *   raw_workbooks/biotechnology.xlsx    BT, years II-IV + M.Tech
+ *   raw_workbooks/bioinformatics.xlsx   Bioinformatics, years II-IV
+ *   raw_workbooks/master_rooms_and_timetables.xlsx  room catalogue
+ *
+ * Every entry records the faculty name exactly as the source prints it. Where a
+ * source gives no name the faculty stays null rather than being filled with a
+ * placeholder, so the UI can honestly show "Faculty" instead of a fake person.
+ */
+
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
+const {
+  parseTimeRange,
+  toDay,
+  isNoise,
+  splitSubjectFaculty,
+  cleanFacultyName
+} = require('./lib/parseHelpers.cjs');
 
 const rawDir = path.join(__dirname, '../server/data/raw_workbooks');
 const dataDir = path.join(__dirname, '../server/data');
 
-const allData = {
-  departments: [
-    { id: 'dept-acse', code: 'ACSE', name: 'Department of Advanced Computer Science and Engineering' },
-    { id: 'dept-ece', code: 'ECE', name: 'Department of Electronics and Communication Engineering' },
-    { id: 'dept-cse', code: 'CSE', name: 'Department of Computer Science and Engineering' },
-    { id: 'dept-sash', code: 'SASH', name: 'School of Applied Science & Humanities' },
-    { id: 'dept-bi', code: 'BIOINFO', name: 'Department of Bioinformatics' },
-    { id: 'dept-bt', code: 'BT', name: 'Department of Biotechnology' }
-  ],
-  groups: [],
-  rooms: new Set(),
-  entries: []
-};
+const DEPARTMENTS = [
+  { id: 'dept-acse', code: 'ACSE', name: 'Department of Advanced Computer Science and Engineering' },
+  { id: 'dept-ece', code: 'ECE', name: 'Department of Electronics and Communication Engineering' },
+  { id: 'dept-cse', code: 'CSE', name: 'Department of Computer Science and Engineering' },
+  { id: 'dept-sash', code: 'SASH', name: 'School of Applied Science & Humanities' },
+  { id: 'dept-bi', code: 'BIOINFO', name: 'Department of Bioinformatics' },
+  { id: 'dept-bt', code: 'BT', name: 'Department of Biotechnology' }
+];
 
-function addGroup(id, name, year, departmentCode, section) {
-  if (!allData.groups.some(g => g.name === name)) {
-    allData.groups.push({ id, name, year, departmentCode, section, size: 60 });
-  }
+const groups = [];
+const groupNames = new Set();
+const rooms = new Set();
+const entries = [];
+
+function addGroup(name, year, departmentCode, section) {
+  if (groupNames.has(name)) return;
+  groupNames.add(name);
+  groups.push({
+    id: `group-${departmentCode.toLowerCase()}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    name, year, departmentCode, section, size: 60
+  });
 }
 
-// 1. Authoritative Rooms from master_rooms_and_timetables.xlsx
-try {
-  const masterWb = XLSX.readFile(path.join(rawDir, 'master_rooms_and_timetables.xlsx'));
-  const roomsSheet = masterWb.Sheets['Rooms'];
-  const roomsRows = XLSX.utils.sheet_to_json(roomsSheet);
-  for (const r of roomsRows) {
-    const rawCodes = r['Room code(s) in timetables'] || '';
-    const codes = rawCodes.split('|').map(c => c.trim().toUpperCase()).filter(Boolean);
-    for (const code of codes) {
-      if (code && code !== 'MOBILE' && code.length < 30) {
-        allData.rooms.add(code);
-      }
-    }
-  }
-  console.log(`Loaded ${roomsRows.length} room definitions from master workbook.`);
-} catch (e) {
-  console.error('Error loading master rooms:', e.message);
+function addEntry(group, day, startTime, endTime, subject, room, faculty, entryType) {
+  if (!group || !day || !startTime || !endTime || !subject) return;
+  entries.push({
+    group, day, startTime, endTime,
+    subject: String(subject).trim(),
+    room: room ? String(room).trim() : null,
+    faculty: cleanFacultyName(faculty),
+    entryType: entryType || 'class'
+  });
+  if (room) rooms.add(String(room).trim().toUpperCase());
 }
 
-// 2. ACSE Timetables
-try {
-  const acsePath = path.join(dataDir, 'parsed_acse.json');
-  if (fs.existsSync(acsePath)) {
-    const acseData = JSON.parse(fs.readFileSync(acsePath, 'utf-8'));
-    for (const g of acseData.groups) {
-      addGroup(g.id, g.name, g.year, 'ACSE', g.section);
-    }
-    for (const r of acseData.rooms) {
-      if (r && r !== 'MOBILE') allData.rooms.add(r.trim().toUpperCase());
-    }
-    allData.entries.push(...acseData.entries);
-    console.log(`Loaded ACSE: ${acseData.groups.length} groups, ${acseData.entries.length} entries.`);
-  }
-} catch (e) {
-  console.error('Error loading ACSE:', e.message);
+function inferType(subject, columnCode) {
+  const s = String(subject || '').toUpperCase();
+  const c = String(columnCode || '').toUpperCase();
+  if (c.includes('-P') || /\(P\)|\bLAB\b|PRACTICAL/.test(s)) return 'lab';
+  if (/TRAINING/.test(s)) return 'training';
+  if (/\bLIB(RARY)?\b/.test(s)) return 'library';
+  return 'class';
 }
 
-// 3. ECE Timetables
-try {
-  const ecePath = path.join(dataDir, 'parsed_ece.json');
-  if (fs.existsSync(ecePath)) {
-    const eceData = JSON.parse(fs.readFileSync(ecePath, 'utf-8'));
-    for (const g of eceData.groups) {
-      addGroup(g.id, g.name, g.year, 'ECE', g.section);
-    }
-    for (const r of eceData.rooms) {
-      if (r && r !== 'MOBILE') allData.rooms.add(r.trim().toUpperCase());
-    }
-    allData.entries.push(...eceData.entries);
-    console.log(`Loaded ECE: ${eceData.groups.length} groups, ${eceData.entries.length} entries.`);
-  }
-} catch (e) {
-  console.error('Error loading ECE:', e.message);
-}
-
-// 4. CSE 3rd Year (22 Sections)
-try {
-  const cseWb = XLSX.readFile(path.join(rawDir, 'cse_3rd_year.xlsx'));
-  const sheet = cseWb.Sheets['All Sections'];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-  const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  const periodTimes = [
-    ['08:15', '09:05'],
-    ['09:05', '09:55'],
-    ['09:55', '10:45'],
-    ['11:00', '11:50'],
-    ['11:50', '12:40'],
-    ['13:30', '14:20'],
-    ['14:20', '15:10']
-  ];
-
-  let cseCount = 0;
-  // Starting at row 6 (0-indexed 5)
-  for (let i = 5; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row || !row[0] || !row[0].toString().startsWith('Section')) continue;
-    const secName = row[0].toString().trim();
-    const room = row[1] ? row[1].toString().trim().toUpperCase() : 'N-407';
-    const groupName = `III CSE-${secName.replace('Section ', 'Sec ')}`;
-    addGroup(`group-cse3-${secName.toLowerCase().replace(/\s+/g, '')}`, groupName, 3, 'CSE', secName);
-    allData.rooms.add(room);
-
-    let col = 2;
-    for (let d = 0; d < days.length; d++) {
-      const day = days[d];
-      for (let p = 0; p < 7; p++) {
-        if (col < row.length && row[col]) {
-          const subj = row[col].toString().trim();
-          if (subj && !['BREAK', 'LUNCH', 'HOLIDAY'].includes(subj.toUpperCase())) {
-            const [start, end] = periodTimes[p];
-            allData.entries.push({
-              group: groupName,
-              day,
-              startTime: start,
-              endTime: end,
-              subject: subj,
-              room,
-              faculty: `CSE Faculty (${subj})`,
-              entryType: subj.toUpperCase().includes('LAB') ? 'lab' : subj.toUpperCase().includes('TRAINING') ? 'training' : 'class'
-            });
-            cseCount++;
-          }
-        }
-        col++;
-      }
-    }
-  }
-  console.log(`Loaded CSE 3rd Year: 22 sections, ${cseCount} entries.`);
-} catch (e) {
-  console.error('Error loading CSE 3rd Year:', e.message);
-}
-
-// 5. SASH Division 4 (Sheets: New 29, 30, 31, 43, 44, 45, 46, 47, 48, 49, 50, 54, 55, 56, 57)
-try {
-  const sashWb = XLSX.readFile(path.join(rawDir, 'sash_division_4.xlsx'));
-  let sashCount = 0;
-  const dayMap = {
-    'MONDAY': 'MON', 'TUESDAY': 'TUE', 'WEDNESDAY': 'WED',
-    'THURSDAY': 'THU', 'FRIDAY': 'FRI', 'SATURDAY': 'SAT'
+/**
+ * Build a subject -> faculty map from the legend block below the grid.
+ *
+ * Column positions vary between sheets (BT puts "Faculty (L)" in column 4 and
+ * the lab teacher in column 8; Bioinformatics III prefixes a Sl.No. column), so
+ * the label and faculty columns are detected from the header row rather than
+ * hard-coded. Each legend row is indexed under its full name, its bracketed
+ * short form, its module prefix and its course code, so whichever style the grid
+ * uses for a cell resolves to the same teacher.
+ */
+function readLegend(grid, stopPattern) {
+  const map = {};
+  const pairs = [];
+  const put = (key, name) => {
+    const k = String(key || '').trim().toUpperCase();
+    if (k && name && !map[k]) map[k] = name;
   };
 
-  for (const sheetName of sashWb.SheetNames) {
-    const sheet = sashWb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-    if (!rows || rows.length < 5) continue;
+  for (let r = 0; r < grid.length; r++) {
+    const header = grid[r] || [];
+    const labelCol = header.findIndex(c => /^Subject/i.test(String(c || '').trim()));
+    if (labelCol === -1) continue;
 
-    const groupName = `I SASH SEC-${sheetName.replace('New ', '')}`;
-    addGroup(`group-sash-${sheetName.toLowerCase().replace(/\s+/g, '-')}`, groupName, 1, 'SASH', `SEC-${sheetName.replace('New ', '')}`);
+    const facultyCols = header
+      .map((c, i) => ({ i, t: String(c || '').trim() }))
+      .filter(x => /^Faculty/i.test(x.t))
+      .sort((a, b) => (/\(L\)/i.test(a.t) ? -1 : 0) - (/\(L\)/i.test(b.t) ? -1 : 0))
+      .map(x => x.i);
+    const codeCol = header.findIndex(c => /^Code$/i.test(String(c || '').trim()));
 
-    // Find time header row
-    let headerRowIdx = -1;
-    for (let r = 0; r < 5; r++) {
-      if (rows[r] && rows[r].some(c => c && c.toString().includes('8.15') || (c && c.toString().includes('10.05')))) {
-        headerRowIdx = r;
-        break;
+    for (let rr = r + 1; rr < grid.length; rr++) {
+      const fr = grid[rr] || [];
+      const label = String(fr[labelCol] || '').trim();
+      if (!label || stopPattern.test(label)) break;
+
+      let name = null;
+      for (const col of facultyCols) {
+        name = cleanFacultyName(fr[col]);
+        if (name) break;
+      }
+      if (!name) continue;
+      pairs.push({ label, name });
+
+      put(label, name);                          // full name
+      put(label.split(/\s*[(/]/)[0], name);      // "Bioprocess Engineering"
+      put(label.split(':')[0], name);            // "DE-1"
+      if (codeCol !== -1) put(fr[codeCol], name);
+      for (const p of label.match(/\(([^)]+)\)/g) || []) {
+        const inner = p.slice(1, -1).trim();
+        if (/^[A-Za-z0-9&/ .-]{2,12}$/.test(inner)) put(inner, name);
       }
     }
-    if (headerRowIdx === -1) continue;
+    break;
+  }
+  return { map, pairs };
+}
 
-    const timeHeaders = rows[headerRowIdx];
-    // Map column index to time range
-    const colTimes = {};
-    for (let c = 1; c < timeHeaders.length; c++) {
-      const th = timeHeaders[c] ? timeHeaders[c].toString().trim() : '';
-      const tm = th.match(/(\d{1,2})[.:](\d{2})\s*-\s*(\d{1,2})[.:](\d{2})/);
-      if (tm) {
-        let sh = parseInt(tm[1], 10);
-        const sm = tm[2];
-        let eh = parseInt(tm[3], 10);
-        const em = tm[4];
-        if (sh < 8) sh += 12;
-        if (eh < 8 || eh < sh) eh += 12;
-        const start = `${String(sh).padStart(2, '0')}:${sm}`;
-        const end = `${String(eh).padStart(2, '0')}:${em}`;
-        colTimes[c] = [start, end];
-      }
+/**
+ * Derive acronyms for a legend subject name.
+ *
+ * Laboratory sheets write the grid cell as an acronym of the legend's full
+ * subject name ("PROCESS PRINCIPLES AND CALCULATIONS" -> PPC). Several rules are
+ * needed because the sheets are inconsistent about joining words; the caller
+ * only accepts a match when exactly one legend entry produces the grid code, so
+ * an ambiguous code stays unmatched rather than being attached to the wrong
+ * teacher.
+ */
+function acronymsOf(label) {
+  const words = String(label)
+    .replace(/\s*\([^)]*\)/g, '')
+    .split(/[\s&]+/)
+    .filter(Boolean)
+    .map(w => w.replace(/[^A-Za-z]/g, '').toUpperCase())
+    .filter(Boolean);
+  const initials = (skip) => words.filter(w => !skip.has(w)).map(w => w[0]).join('');
+  const withAnd = initials(new Set());
+  const withoutAnd = initials(new Set(['AND', 'THE']));
+  const noOf = initials(new Set(['AND', 'THE', 'OF']));
+  return new Set([withAnd, withoutAnd, noOf]);
+}
+
+/** Attach a teacher to a grid code when the acronym match is unambiguous. */
+function resolveByAcronym(code, legends) {
+  const key = String(code || '').toUpperCase();
+  if (!key) return null;
+  const hits = legends.filter(l => acronymsOf(l.label).has(key));
+  return hits.length === 1 ? hits[0].name : null;
+}
+
+/** Find the time-header row and the column -> [start,end] map. */
+function findTimeColumns(grid, scanRows) {
+  for (let r = 0; r < Math.min(scanRows, grid.length); r++) {
+    const found = {};
+    (grid[r] || []).forEach((cell, idx) => {
+      const range = parseTimeRange(cell);
+      if (range) found[idx] = range;
+    });
+    if (Object.keys(found).length >= 5) return { headerRow: r, colTimes: found };
+  }
+  return { headerRow: -1, colTimes: {} };
+}
+
+/** Find the "Room No: X" declaration in a sheet header. */
+function findRoom(grid, scanRows) {
+  for (let r = 0; r < Math.min(scanRows, grid.length); r++) {
+    for (const cell of grid[r] || []) {
+      const m = String(cell || '').match(/Room No[.:\s]*([A-Za-z0-9\s-]+)/i);
+      if (m) return m[1].trim().toUpperCase().replace(/\s+/g, '-');
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- rooms ----
+try {
+  const wb = XLSX.readFile(path.join(rawDir, 'master_rooms_and_timetables.xlsx'));
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets['Rooms']);
+  for (const r of rows) {
+    String(r['Room code(s) in timetables'] || '')
+      .split('|')
+      .map(c => c.trim().toUpperCase())
+      .filter(c => c && c !== 'MOBILE' && c.length < 30)
+      .forEach(c => rooms.add(c));
+  }
+  console.log(`Rooms: ${rooms.size} from master catalogue`);
+} catch (e) {
+  console.error('Rooms: master workbook unavailable -', e.message);
+}
+
+// ----------------------------------------------------------------- ACSE ----
+try {
+  const acse = JSON.parse(fs.readFileSync(path.join(dataDir, 'parsed_acse.json'), 'utf-8'));
+  for (const g of acse.groups) addGroup(g.name, g.year, 'ACSE', g.section || g.name);
+  for (const e of acse.entries) {
+    addEntry(e.group, e.day, e.startTime, e.endTime, e.subject, e.room, e.faculty, e.entryType);
+  }
+  console.log(`ACSE: ${acse.groups.length} groups, ${acse.entries.length} entries`);
+} catch (e) {
+  console.error('ACSE: parse failed -', e.message);
+}
+
+// ------------------------------------------------------------------ ECE ----
+try {
+  const text = fs.readFileSync(path.join(dataDir, 'ece_timetables.txt'), 'utf-8');
+  let section = null;
+  let room = null;
+  let count = 0;
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const sec = line.match(/^(SEC-[A-Z0-9]+)\s*\|\s*ROOM NO:\s*([A-Za-z0-9\s-]+)/);
+    if (sec) {
+      section = sec[1].trim();
+      room = sec[2].trim().replace(/\s+/g, '');
+      addGroup(`II ECE ${section}`, 2, 'ECE', section);
+      if (room) rooms.add(room.toUpperCase());
+      continue;
     }
 
-    // Process Monday - Saturday rows
-    for (let r = headerRowIdx + 1; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row || !row[0] && !row[1]) continue;
-      const firstCell = (row[0] || row[1] || '').toString().trim().toUpperCase();
-      const day = dayMap[firstCell];
-      if (!day) continue;
+    const dayMatch = line.match(/^(MON|TUE|WED|THU|FRI|SAT):\s*(.*)$/);
+    if (!dayMatch || !section) continue;
+    const day = dayMatch[1];
 
-      for (let c = 1; c < row.length; c++) {
-        if (!colTimes[c] || !row[c]) continue;
-        const cellText = row[c].toString().trim();
-        if (!cellText || ['BREAK', 'LUNCH', 'LUNCH BREAK'].includes(cellText.toUpperCase())) continue;
+    for (const slot of dayMatch[2].split(/,\s*/)) {
+      const m = slot.match(/^(\d{1,2}[.:]\d{2})\s*-\s*(\d{1,2}[.:]\d{2})\s+(.+)$/);
+      if (!m) continue;
+      const range = parseTimeRange(`${m[1]}-${m[2]}`);
+      if (!range) continue;
 
-        const [start, end] = colTimes[c];
-        // Extract room from cell text
-        let room = null;
-        const rMatch = cellText.match(/(VBFFTF-?\d+|VBFTTF-?\d+|VBFTF-?\d+|VBTF-?\d+|VBT-?\d+|VBSF-?\d+|VBFF-?\d+|VSF-?\d+|VGF-?\d+|VPTF-?\d+|VPSF-?\d+|NB-?\d+|AFF-?\d+|107)/i);
-        if (rMatch) {
-          room = rMatch[1].trim().toUpperCase().replace(/\s+/g, '');
-          if (room === '107') room = 'N-107';
-          allData.rooms.add(room);
-        }
+      let activity = m[3].trim();
+      if (isNoise(activity)) continue;
 
-        allData.entries.push({
-          group: groupName,
-          day,
-          startTime: start,
-          endTime: end,
-          subject: cellText.replace(/\n/g, ' '),
-          room,
-          faculty: 'SASH Faculty',
-          entryType: cellText.toUpperCase().includes('(P)') || cellText.toUpperCase().includes('LAB') ? 'lab' : 'class'
-        });
-        sashCount++;
+      const parts = activity.split('-');
+      let typeCode = null;
+      let slotRoom = room;
+      const tail = parts[parts.length - 1];
+      if (tail && /^(VSF|VTF|VBSF|VBTF|VBFF|VBFTF|VBFFTF|VGF|AFF|VPSF|VPTF)\s*\d+$/i.test(tail)) {
+        slotRoom = tail.replace(/\s+/g, '').toUpperCase();
+        parts.pop();
+      }
+      if (parts.length > 1 && /^(L|T|P)$/i.test(parts[parts.length - 1])) typeCode = parts.pop();
+      const subject = parts.join('-') || activity;
+
+      addEntry(`II ECE ${section}`, day, range[0], range[1], subject, slotRoom,
+        null, inferType(subject, typeCode ? `-${typeCode}` : ''));
+      count++;
+    }
+  }
+  console.log(`ECE: 6 groups, ${count} entries`);
+} catch (e) {
+  console.error('ECE: parse failed -', e.message);
+}
+
+// ------------------------------------------------------------------ CSE ----
+try {
+  const wb = XLSX.readFile(path.join(rawDir, 'cse_3rd_year.xlsx'));
+  let count = 0;
+
+  for (const sheetName of wb.SheetNames) {
+    if (!/^Sec \d+$/.test(sheetName)) continue;
+    const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+    if (!grid || grid.length < 4) continue;
+
+    const room = (String(grid[0][0] || '').match(/\[([^\]]+)\]/) || [])[1] || null;
+    const groupName = `III CSE-${sheetName}`;
+    addGroup(groupName, 3, 'CSE', sheetName);
+    if (room) rooms.add(room.trim().toUpperCase());
+
+    const { headerRow, colTimes } = findTimeColumns(grid, 5);
+    if (headerRow === -1) continue;
+
+    // The sheet repeats Mon/Tue for a second week; a weekly grid keeps the first.
+    const seenDays = new Set();
+    for (let r = headerRow + 1; r < grid.length; r++) {
+      const row = grid[r] || [];
+      const day = toDay(row[0]);
+      if (!day || seenDays.has(day)) continue;
+      seenDays.add(day);
+
+      for (const idx of Object.keys(colTimes)) {
+        const cell = row[idx];
+        if (!cell || isNoise(cell)) continue;
+        const { subject, faculty } = splitSubjectFaculty(cell);
+        if (!subject || isNoise(subject)) continue;
+        const [start, end] = colTimes[idx];
+        addEntry(groupName, day, start, end, subject, room, faculty, inferType(subject));
+        count++;
       }
     }
   }
-  console.log(`Loaded SASH Division 4: ${sashCount} entries.`);
+  console.log(`CSE: 22 groups, ${count} entries`);
 } catch (e) {
-  console.error('Error loading SASH Division 4:', e.message);
+  console.error('CSE: parse failed -', e.message);
 }
 
-// 6. Biotechnology (BT)
+// ----------------------------------------------------------------- SASH ----
 try {
-  const btWb = XLSX.readFile(path.join(rawDir, 'biotechnology.xlsx'));
-  let btCount = 0;
-  const dayMap = { 'MON': 'MON', 'TUE': 'TUE', 'WED': 'WED', 'THU': 'THU', 'FRI': 'FRI', 'SAT': 'SAT' };
-  const btSlots = [
-    ['08:15', '09:05'],
-    ['09:05', '09:55'],
-    ['10:10', '11:00'],
-    ['11:00', '11:50'],
-    ['11:50', '12:40'],
-    ['13:30', '14:20'],
-    ['14:20', '15:10'],
-    ['15:10', '16:00'],
-    ['16:00', '16:45']
-  ];
+  const wb = XLSX.readFile(path.join(rawDir, 'sash_division_4.xlsx'));
+  let count = 0;
 
-  for (const sheetName of btWb.SheetNames) {
-    if (!sheetName.includes('BT') && !sheetName.includes('M.Tech')) continue;
-    const sheet = btWb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-    if (!rows || rows.length < 7) continue;
+  for (const sheetName of wb.SheetNames) {
+    const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+    if (!grid || grid.length < 6) continue;
 
-    let defaultRoom = 'ASF-07';
-    let year = 2;
-    if (sheetName.includes('III')) year = 3;
-    else if (sheetName.includes('IV')) year = 4;
-    else if (sheetName.includes('M.Tech')) year = 1;
+    const sectionLabel = sheetName.replace(/^New\s+/, '').trim();
+    const groupName = `I SASH SEC-${sectionLabel}`;
+    addGroup(groupName, 1, 'SASH', `SEC-${sectionLabel}`);
 
-    // Check for room in header
-    for (let r = 0; r < 5; r++) {
-      if (rows[r]) {
-        for (const cell of rows[r]) {
-          const rmMatch = cell && cell.toString().match(/Room No:\s*([A-Za-z0-9\s-]+)/i);
-          if (rmMatch) {
-            defaultRoom = rmMatch[1].trim().toUpperCase().replace(/\s+/g, '-');
-            if (defaultRoom !== 'MOBILE') allData.rooms.add(defaultRoom);
-          }
-        }
+    const { headerRow, colTimes } = findTimeColumns(grid, 6);
+    if (headerRow === -1) continue;
+
+    const { map: facultyByCode } = readLegend(grid, /^(TOTAL|COORDINATOR|COUNSELOR|ACADEMIC LEAD)/i);
+
+    for (let r = headerRow + 1; r < grid.length; r++) {
+      const row = grid[r] || [];
+      const day = toDay(row[0]);
+      if (!day) continue;
+
+      for (const idx of Object.keys(colTimes)) {
+        const cell = row[idx];
+        if (!cell || isNoise(cell)) continue;
+        const text = String(cell).trim();
+        const [subjectLine, roomLine] = text.split('\n');
+        const subject = (subjectLine || '').trim();
+        if (!subject || isNoise(subject)) continue;
+        const code = subject.replace(/\s*\(.*\)\s*$/, '').trim().toUpperCase();
+        const faculty = facultyByCode[code] || null;
+        const [start, end] = colTimes[idx];
+        addEntry(groupName, day, start, end, subject, roomLine && roomLine.trim(), faculty,
+          inferType(subject));
+        count++;
       }
     }
+  }
+  console.log(`SASH: 15 groups, ${count} entries`);
+} catch (e) {
+  console.error('SASH: parse failed -', e.message);
+}
+
+// ------------------------------------------------------- BT and BIOINFO ----
+function parseLabDepartment(file, sheetFilter, deptCode, yearOf, headerScan) {
+  const wb = XLSX.readFile(path.join(rawDir, file));
+  let count = 0;
+
+  for (const sheetName of wb.SheetNames) {
+    if (!sheetFilter(sheetName)) continue;
+    const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+    if (!grid || grid.length < 10) continue;
 
     const groupName = sheetName.trim();
-    addGroup(`group-bt-${groupName.toLowerCase().replace(/[\s.]+/g, '-')}`, groupName, year, 'BT', groupName);
+    addGroup(groupName, yearOf(sheetName), deptCode, groupName);
 
-    for (let r = 5; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row || !row[0]) continue;
-      const day = dayMap[row[0].toString().trim().toUpperCase()];
+    let room = findRoom(grid, 6);
+    if (room && room !== 'MOBILE') rooms.add(room);
+
+    const { map: facultyBySubject, pairs: legendPairs } = readLegend(grid, /^(COUNSEL|TT I\/C)/i);
+
+    const { headerRow, colTimes } = findTimeColumns(grid, headerScan);
+    if (headerRow === -1) continue;
+
+    for (let r = headerRow + 1; r < grid.length; r++) {
+      const row = grid[r] || [];
+      const day = toDay(row[0]);
       if (!day) continue;
-
-      let slotIdx = 0;
-      for (let c = 1; c < row.length; c++) {
-        const val = row[c] ? row[c].toString().trim() : '';
-        if (!val || ['BREAK', 'LUNCH', 'ACTIVITIES'].includes(val.toUpperCase())) continue;
-        if (slotIdx < btSlots.length) {
-          const [start, end] = btSlots[slotIdx];
-          allData.entries.push({
-            group: groupName,
-            day,
-            startTime: start,
-            endTime: end,
-            subject: val,
-            room: defaultRoom !== 'MOBILE' ? defaultRoom : null,
-            faculty: 'BT Faculty',
-            entryType: val.toUpperCase().includes('(P)') ? 'lab' : 'class'
-          });
-          btCount++;
-        }
-        slotIdx++;
+      for (const idx of Object.keys(colTimes)) {
+        const cell = row[idx];
+        if (!cell || isNoise(cell)) continue;
+        const subject = String(cell).trim();
+        if (subject.length > 90) continue;
+        const code = subject.replace(/\s*\(.*\)\s*$/, '').trim().toUpperCase();
+        const faculty = facultyBySubject[code] || resolveByAcronym(code, legendPairs);
+        const [start, end] = colTimes[idx];
+        addEntry(groupName, day, start, end, subject,
+          room && room !== 'MOBILE' ? room : null,
+          faculty, inferType(subject));
+        count++;
       }
     }
   }
-  console.log(`Loaded Biotechnology: ${btCount} entries.`);
-} catch (e) {
-  console.error('Error loading Biotechnology:', e.message);
+  return count;
 }
 
-// 7. Bioinformatics (BI)
 try {
-  const biWb = XLSX.readFile(path.join(rawDir, 'bioinformatics.xlsx'));
-  let biCount = 0;
-  const dayMap = { 'MON': 'MON', 'TUE': 'TUE', 'WED': 'WED', 'THU': 'THU', 'FRI': 'FRI', 'SAT': 'SAT' };
-  const biSlots = [
-    ['08:15', '09:05'],
-    ['09:05', '09:55'],
-    ['10:10', '11:00'],
-    ['11:00', '11:50'],
-    ['11:50', '12:40'],
-    ['13:30', '14:20'],
-    ['14:20', '15:10'],
-    ['15:10', '16:00'],
-    ['16:00', '16:45']
-  ];
-
-  for (const sheetName of ['II BI', 'III BI', 'IV BI A', 'IV BI B']) {
-    const sheet = biWb.Sheets[sheetName];
-    if (!sheet) continue;
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-    if (!rows || rows.length < 10) continue;
-
-    let defaultRoom = 'ASF-06';
-    let year = sheetName.startsWith('II') ? 2 : sheetName.startsWith('III') ? 3 : 4;
-    for (let r = 0; r < 10; r++) {
-      if (rows[r]) {
-        for (const cell of rows[r]) {
-          const rmMatch = cell && cell.toString().match(/Room No[.:\s]*([A-Za-z0-9\s-]+)/i);
-          if (rmMatch) {
-            defaultRoom = rmMatch[1].trim().toUpperCase().replace(/\s+/g, '-');
-            if (defaultRoom !== 'MOBILE') allData.rooms.add(defaultRoom);
-          }
-        }
-      }
-    }
-
-    const groupName = sheetName.trim();
-    addGroup(`group-bi-${groupName.toLowerCase().replace(/[\s.]+/g, '-')}`, groupName, year, 'BIOINFO', groupName);
-
-    for (let r = 8; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row) continue;
-      const dayCell = (row[0] || row[1] || '').toString().trim().toUpperCase();
-      const day = dayMap[dayCell];
-      if (!day) continue;
-
-      let slotIdx = 0;
-      for (let c = 1; c < row.length; c++) {
-        const val = row[c] ? row[c].toString().trim() : '';
-        if (!val || ['BREAK', 'LUNCH', 'ACTIVITIES', 'LIFE SKILLS'].includes(val.toUpperCase()) || val.length > 80) continue;
-        if (slotIdx < biSlots.length) {
-          const [start, end] = biSlots[slotIdx];
-          allData.entries.push({
-            group: groupName,
-            day,
-            startTime: start,
-            endTime: end,
-            subject: val,
-            room: defaultRoom !== 'MOBILE' ? defaultRoom : null,
-            faculty: 'Bioinformatics Faculty',
-            entryType: val.toUpperCase().includes('(P)') ? 'lab' : 'class'
-          });
-          biCount++;
-        }
-        slotIdx++;
-      }
-    }
-  }
-  console.log(`Loaded Bioinformatics: ${biCount} entries.`);
+  const n = parseLabDepartment(
+    'biotechnology.xlsx',
+    s => /BT|M\.Tech/.test(s) && !/Mobile|Lab/.test(s),
+    'BT',
+    s => (/^III/.test(s) ? 3 : /^IV/.test(s) ? 4 : /M\.Tech/.test(s) ? 1 : 2),
+    10
+  );
+  console.log(`BT: ${n} entries`);
 } catch (e) {
-  console.error('Error loading Bioinformatics:', e.message);
+  console.error('BT: parse failed -', e.message);
 }
 
-// Clean and sort rooms
-const cleanRooms = Array.from(allData.rooms)
-  .map(r => r.trim().toUpperCase())
-  .filter(r => r && r !== 'MOBILE' && r.length < 30);
-allData.rooms = Array.from(new Set(cleanRooms)).sort();
+try {
+  const n = parseLabDepartment(
+    'bioinformatics.xlsx',
+    s => ['II BI', 'III BI', 'IV BI A', 'IV BI B'].includes(s),
+    'BIOINFO',
+    s => (s.startsWith('II ') ? 2 : s.startsWith('III') ? 3 : 4),
+    12
+  );
+  console.log(`BIOINFO: ${n} entries`);
+} catch (e) {
+  console.error('BIOINFO: parse failed -', e.message);
+}
+
+// ----------------------------------------------------------------- output --
+const cleanRooms = Array.from(new Set(
+  Array.from(rooms).map(r => r.trim().toUpperCase())
+    .filter(r => r && r !== 'MOBILE' && r.length < 30)
+)).sort();
+
+const output = { departments: DEPARTMENTS, groups, rooms: cleanRooms, entries };
+const namedFaculty = new Set(entries.map(e => e.faculty).filter(Boolean));
 
 console.log('--- COMPILE SUMMARY ---');
-console.log('Total Departments:', allData.departments.length);
-console.log('Total Groups:', allData.groups.length);
-console.log('Total Rooms:', allData.rooms.length);
-console.log('Total Timetable Entries:', allData.entries.length);
+console.log('Departments:', output.departments.length);
+console.log('Groups:', groups.length);
+console.log('Rooms:', cleanRooms.length);
+console.log('Entries:', entries.length);
+console.log('Distinct named faculty:', namedFaculty.size);
+console.log('Entries without a faculty name:', entries.filter(e => !e.faculty).length);
 
 const outputPath = path.join(dataDir, 'all_compiled_timetables.json');
-fs.writeFileSync(outputPath, JSON.stringify(allData, null, 2), 'utf-8');
-console.log(`Saved compiled data to ${outputPath} (${(fs.statSync(outputPath).size / 1024).toFixed(1)} KB)`);
+fs.writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
+console.log(`Saved ${outputPath} (${(fs.statSync(outputPath).size / 1024).toFixed(1)} KB)`);
