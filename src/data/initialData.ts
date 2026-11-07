@@ -176,7 +176,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
     type: 'EVEN',
     startDate: '2026-12-01',
     endDate: '2027-05-15',
-    isActive: true
+    isActive: false
   },
   {
     id: 'sem-2026-odd',
@@ -186,7 +186,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
     type: 'ODD',
     startDate: '2026-06-15',
     endDate: '2026-11-20',
-    isActive: false
+    isActive: true
   }
 ];
 

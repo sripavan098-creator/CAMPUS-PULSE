@@ -592,13 +592,32 @@ router.get('/timetables', async (req: Request, res: Response) => {
     include: { room: true, faculty: true, group: true },
     orderBy: [{ day: 'asc' }, { startTime: 'asc' }]
   })
-  res.json(entries.map(toTimetableEntry))
+  const period = await activePeriod()
+  res.json(entries.map(e => toTimetableEntry(e, period)))
 })
 
 /**
  * Shapes an Entry row into the TimetableEntry the SPA expects. The frontend
  * keys off `day` as a full name, `subjectId` as the subject text, and `isLab`.
  */
+/**
+ * The academic period every timetable row belongs to. Resolved from the
+ * database so the label the UI prints and the flag that marks a semester
+ * active cannot disagree with the semester's own start and end dates.
+ */
+async function activePeriod(): Promise<{ academicYearId: string; semesterId: string }> {
+  const today = new Date().toISOString().slice(0, 10)
+  const current = await prisma.semester.findFirst({
+    where: { startDate: { lte: today }, endDate: { gte: today } },
+    orderBy: [{ startDate: 'desc' }]
+  })
+  if (current) return { academicYearId: current.academicYearId, semesterId: current.id }
+  const fallback = await prisma.semester.findFirst({ where: { isActive: true } })
+  return fallback
+    ? { academicYearId: fallback.academicYearId, semesterId: fallback.id }
+    : { academicYearId: 'ay-2026-27', semesterId: 'sem-odd-2026' }
+}
+
 function toTimetableEntry(e: {
   id: string
   subject: string | null
@@ -614,15 +633,15 @@ function toTimetableEntry(e: {
   faculty?: { name: string; departmentId: string | null } | null
   room?: { blockId: string; floorId: string | null } | null
   group?: { name: string; year: number; departmentId: string } | null
-}) {
+}, period: { academicYearId: string; semesterId: string }) {
   const dayName =
     e.day === 'MON' ? 'Monday' : e.day === 'TUE' ? 'Tuesday' : e.day === 'WED' ? 'Wednesday' :
     e.day === 'THU' ? 'Thursday' : e.day === 'FRI' ? 'Friday' : e.day === 'SAT' ? 'Saturday' : 'Sunday'
 
   return {
     id: e.id,
-    academicYearId: 'ay-2026-27',
-    semesterId: 'sem-even-2026',
+    academicYearId: period.academicYearId,
+    semesterId: period.semesterId,
     departmentId: e.group?.departmentId || 'dept-cse',
     yearOfStudy: e.group?.year || 2,
     sectionId: e.group?.name || e.groupId || '',
@@ -705,7 +724,7 @@ router.post('/timetables', requireAuth, requireRole('admin', 'faculty'), async (
     include: { room: true, faculty: true, group: true }
   })
 
-  res.status(201).json(toTimetableEntry(entry))
+  res.status(201).json(toTimetableEntry(entry, await activePeriod()))
 })
 
 // PUT /api/timetables/:id - update an entry (admin/faculty)
@@ -738,7 +757,7 @@ router.put('/timetables/:id', requireAuth, requireRole('admin', 'faculty'), asyn
     include: { room: true, faculty: true, group: true }
   })
 
-  res.json(toTimetableEntry(entry))
+  res.json(toTimetableEntry(entry, await activePeriod()))
 })
 
 // DELETE /api/timetables/:id - remove an entry (admin/faculty)

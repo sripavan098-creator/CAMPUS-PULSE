@@ -524,12 +524,20 @@ async function main() {
     await prisma.academicYear.upsert({ where: { id: y.id }, update: {}, create: y })
   }
 
-  const semesters = [
-    { id: 'sem-odd-2026', academicYearId: 'ay-2026-27', semesterNumber: 1, name: 'Semester I (Odd)', type: 'ODD', startDate: '2026-06-01', endDate: '2026-11-30', isActive: false },
-    { id: 'sem-even-2026', academicYearId: 'ay-2026-27', semesterNumber: 2, name: 'Semester II (Even)', type: 'EVEN', startDate: '2026-12-01', endDate: '2027-05-31', isActive: true },
+  // Which semester is active follows its own dates, so a redeploy cannot
+  // leave the flag disagreeing with the calendar.
+  const today = new Date().toISOString().slice(0, 10)
+  const semesterSeeds = [
+    { id: 'sem-odd-2026', academicYearId: 'ay-2026-27', semesterNumber: 1, name: 'Semester I (Odd)', type: 'ODD', startDate: '2026-06-01', endDate: '2026-11-30' },
+    { id: 'sem-even-2026', academicYearId: 'ay-2026-27', semesterNumber: 2, name: 'Semester II (Even)', type: 'EVEN', startDate: '2026-12-01', endDate: '2027-05-31' },
   ]
-  for (const sem of semesters) {
-    await prisma.semester.upsert({ where: { id: sem.id }, update: {}, create: sem })
+  for (const sem of semesterSeeds) {
+    const isActive = sem.startDate <= today && today <= sem.endDate
+    await prisma.semester.upsert({
+      where: { id: sem.id },
+      update: { isActive },
+      create: { ...sem, isActive }
+    })
   }
 
   console.log(`Database seeded successfully!`)
