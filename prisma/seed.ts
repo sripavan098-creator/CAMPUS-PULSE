@@ -379,23 +379,28 @@ async function main() {
     // Faculty names from the source legend are free text and may list several
     // people per slot; the first name is used as the primary instructor and
     // generic labels like "CSE Faculty (CN)" stay unlinked.
-    const facultyIdByName = new Map<string, string>()
-    const facultyDepartmentByName = new Map<string, string>()
+    const facultyIdByKey = new Map<string, string>()
     let facultyCount = 0
+    // The same teacher is written several ways across legends ("Dr. Shakila
+    // Banu-", "Dr. Shakila Banu", "DR. S. VINOTH"). Key on a form that ignores
+    // case, punctuation and spacing so the spellings collapse into one row.
+    const facultyKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
     const facultyIdFor = async (raw: string | null | undefined, departmentId?: string | null): Promise<string | null> => {
       if (!raw) return null
-      const primary = raw.split(/[,;]/)[0].replace(/\s+/g, ' ').trim().replace(/[.]+$/, '')
+      // Strip a trailing separator before the generic-label test, otherwise a
+      // legend cell like "DR. S. VINOTH -" reads as a label and stays unlinked.
+      const primary = raw.split(/[,;]/)[0].replace(/\s+/g, ' ').trim().replace(/[\s,;:./\\|-]+$/, '')
       if (!primary || /faculty/i.test(primary) || primary.length < 4) return null
-      if (departmentId && !facultyDepartmentByName.has(primary)) facultyDepartmentByName.set(primary, departmentId)
-      const cached = facultyIdByName.get(primary)
+      const key = facultyKey(primary)
+      const cached = facultyIdByKey.get(key)
       if (cached) return cached
-      const code = `fac-${primary.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}`
+      const code = `fac-${primary.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48)}`
       const rec = await prisma.faculty.upsert({
         where: { code },
         update: { name: primary, departmentId: departmentId || null },
         create: { code, name: primary, departmentId: departmentId || null }
       })
-      facultyIdByName.set(primary, rec.id)
+      facultyIdByKey.set(key, rec.id)
       facultyCount++
       return rec.id
     }

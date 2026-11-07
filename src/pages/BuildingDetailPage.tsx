@@ -15,6 +15,7 @@ import { FloorBlueprint } from '../components/blueprint/FloorBlueprint';
 import { FloorResourceTable } from '../components/blueprint/FloorResourceTable';
 import { RoomDetailModal } from '../components/blueprint/RoomDetailModal';
 import { DAYS_OF_WEEK } from '../utils/timeUtils';
+import { findBuildingBySlug } from '../utils/buildingUtils';
 
 export const BuildingDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -38,8 +39,8 @@ export const BuildingDetailPage: React.FC = () => {
     setError(null);
     try {
       const allBuildings = await apiService.getBuildings();
-      const currentSlug = slug || 'nagarjuna-block';
-      const foundBldg = allBuildings.find(b => b.slug === currentSlug || b.id === currentSlug);
+
+      const foundBldg = findBuildingBySlug(allBuildings, slug);
 
       if (foundBldg) {
         setBuilding(foundBldg);
