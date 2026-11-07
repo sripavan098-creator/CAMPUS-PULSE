@@ -42024,17 +42024,6 @@
     {
       "group": "I X SEC-09",
       "day": "MON",
-      "startTime": "09:55",
-      "endTime": "10:10",
-      "subject": "]",
-      "room": null,
-      "faculty": null,
-      "entryType": "class",
-      "departmentCode": "CSE"
-    },
-    {
-      "group": "I X SEC-09",
-      "day": "MON",
       "startTime": "10:10",
       "endTime": "11:00",
       "subject": "LA",

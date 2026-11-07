@@ -270,7 +270,7 @@ function parseStreamSheet(rows, catalogue) {
       if (!rawSubject || isNoise(rawSubject) || NON_CLASS.test(rawSubject)) continue;
 
       const subject = stripTrailingRoom(rawSubject, catalogue);
-      if (!subject || NON_CLASS.test(subject)) continue;
+      if (!subject || !/[A-Za-z0-9]/.test(subject) || NON_CLASS.test(subject)) continue;
 
       const faculty = resolveFaculty(subject, facultyByCode, pairs);
 
