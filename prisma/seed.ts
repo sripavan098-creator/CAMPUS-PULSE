@@ -4,7 +4,7 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { canonicalRoomId } from '../src/utils/roomUtils'
+import { canonicalRoomId, roomMatchKey } from '../src/utils/roomUtils'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -361,27 +361,39 @@ async function main() {
       })
     }
 
-      // The same room is written several ways across workbooks ("VBFF 1",
-      // "VBFF-1"), and older seeds stored each spelling as its own row. Fold
-      // every alias onto the canonical id so the availability engine sees one
-      // room: repoint entries, disruptions and proposals, then drop the alias.
-      const canonicalOf = new Map<string, string>()
-      for (const { id } of await prisma.room.findMany({ select: { id: true } })) {
-        const canon = canonicalRoomId(id) ?? id
-        if (canon !== id) canonicalOf.set(id, canon)
+      // The same room is written several ways across workbooks ("VBFF 1" vs
+      // "VBFF-1" vs "VBFF-01"), and older seeds stored each spelling as its own
+      // row, so the availability engine could report one twin free while the
+      // other was busy. Group the rows by match key, keep the spelling that
+      // carries the most timetable entries as the representative, repoint the
+      // rest onto it and drop the duplicates.
+      const catalogueIds = new Set(confirmedRooms.map(r => r.id))
+      const allRooms = await prisma.room.findMany({
+        select: { id: true, _count: { select: { entries: true } } }
+      })
+      const roomGroups = new Map<string, { id: string; entries: number }[]>()
+      for (const r of allRooms) {
+        const key = roomMatchKey(r.id) ?? r.id
+        const group = roomGroups.get(key) ?? []
+        group.push({ id: r.id, entries: r._count.entries })
+        roomGroups.set(key, group)
       }
+      const roomIdByKey = new Map<string, string>()
       let mergedRooms = 0
-      for (const [alias, canon] of canonicalOf) {
-        await prisma.room.upsert({
-          where: { id: canon },
-          update: {},
-          create: { id: canon, blockId: 'A', floorId: null, confidence: 'inferred', type: 'Classroom', capacity: 60 }
-        })
-        await prisma.entry.updateMany({ where: { roomId: alias }, data: { roomId: canon } })
-        await prisma.disruption.updateMany({ where: { roomId: alias }, data: { roomId: canon } })
-        await prisma.proposal.updateMany({ where: { roomId: alias }, data: { roomId: canon } })
-        await prisma.room.delete({ where: { id: alias } })
-        mergedRooms++
+      for (const [key, group] of roomGroups) {
+        const [keep, ...aliases] = group.sort((a, b) =>
+          Number(catalogueIds.has(b.id)) - Number(catalogueIds.has(a.id)) ||
+          b.entries - a.entries ||
+          a.id.localeCompare(b.id)
+        )
+        roomIdByKey.set(key, keep.id)
+        for (const alias of aliases) {
+          await prisma.entry.updateMany({ where: { roomId: alias.id }, data: { roomId: keep.id } })
+          await prisma.disruption.updateMany({ where: { roomId: alias.id }, data: { roomId: keep.id } })
+          await prisma.proposal.updateMany({ where: { roomId: alias.id }, data: { roomId: keep.id } })
+          await prisma.room.delete({ where: { id: alias.id } })
+          mergedRooms++
+        }
       }
       if (mergedRooms) console.log(`- Merged ${mergedRooms} duplicate room labels onto canonical ids`)
 
@@ -440,17 +452,14 @@ async function main() {
     // Room labels are free text in the workbooks, so a handful do not match a
     // catalogue room ("Sravanthi Seminar Hall [H Block]"). An unknown room is
     // left unset instead of failing the whole seed on a foreign key.
-    const knownRoomIds = new Set(
-      (await prisma.room.findMany({ select: { id: true } })).map(r => r.id)
-    )
 
     let newEntriesCount = 0
     for (const entry of compiledData.entries) {
       const gId = groupMap.get(entry.group)
       if (!gId) continue
 
-      const rId = canonicalRoomId(entry.room)
-      const roomId = rId && rId !== 'MOBILE' && knownRoomIds.has(rId) ? rId : null
+      const rKey = roomMatchKey(entry.room)
+      const roomId = rKey ? roomIdByKey.get(rKey) ?? null : null
 
       await prisma.entry.create({
         data: {
