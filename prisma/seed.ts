@@ -4,6 +4,7 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { canonicalRoomId } from '../src/utils/roomUtils'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -305,7 +306,7 @@ async function main() {
     // 11.2 Upsert Rooms from compiledData
     for (const rawRoom of compiledData.rooms) {
       if (!rawRoom || rawRoom === 'MOBILE') continue
-      const rId = rawRoom.trim().toUpperCase()
+      const rId = canonicalRoomId(rawRoom)
       let blk = 'A'
       let flrId: string | null = null
 
@@ -359,6 +360,30 @@ async function main() {
         }
       })
     }
+
+      // The same room is written several ways across workbooks ("VBFF 1",
+      // "VBFF-1"), and older seeds stored each spelling as its own row. Fold
+      // every alias onto the canonical id so the availability engine sees one
+      // room: repoint entries, disruptions and proposals, then drop the alias.
+      const canonicalOf = new Map<string, string>()
+      for (const { id } of await prisma.room.findMany({ select: { id: true } })) {
+        const canon = canonicalRoomId(id) ?? id
+        if (canon !== id) canonicalOf.set(id, canon)
+      }
+      let mergedRooms = 0
+      for (const [alias, canon] of canonicalOf) {
+        await prisma.room.upsert({
+          where: { id: canon },
+          update: {},
+          create: { id: canon, blockId: 'A', floorId: null, confidence: 'inferred', type: 'Classroom', capacity: 60 }
+        })
+        await prisma.entry.updateMany({ where: { roomId: alias }, data: { roomId: canon } })
+        await prisma.disruption.updateMany({ where: { roomId: alias }, data: { roomId: canon } })
+        await prisma.proposal.updateMany({ where: { roomId: alias }, data: { roomId: canon } })
+        await prisma.room.delete({ where: { id: alias } })
+        mergedRooms++
+      }
+      if (mergedRooms) console.log(`- Merged ${mergedRooms} duplicate room labels onto canonical ids`)
 
     // 11.3 Upsert Groups
     const groupMap = new Map<string, string>()
@@ -424,7 +449,7 @@ async function main() {
       const gId = groupMap.get(entry.group)
       if (!gId) continue
 
-      const rId = entry.room ? entry.room.trim().toUpperCase() : null
+      const rId = canonicalRoomId(entry.room)
       const roomId = rId && rId !== 'MOBILE' && knownRoomIds.has(rId) ? rId : null
 
       await prisma.entry.create({
