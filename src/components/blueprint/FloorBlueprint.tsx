@@ -208,7 +208,7 @@ export const FloorBlueprint: React.FC<FloorBlueprintProps> = ({
           </div>
 
           {/* Blueprint Elements */}
-          {floor.blueprintElements.map(elem => {
+          {(floor.blueprintElements || []).map(elem => {
             const isRoom = !!elem.roomId;
             const targetRoom = isRoom ? rooms.find(r => r.id === elem.roomId) : undefined;
             const isSelected = isRoom && elem.roomId === selectedRoomId;

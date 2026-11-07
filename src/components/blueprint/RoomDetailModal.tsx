@@ -45,7 +45,7 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
 
   const dept = departments.find(d => d.id === room.departmentId);
   const getSubj = (id?: string) => subjects.find(s => s.id === id);
-  const getFac = (id?: string) => facultyList.find(f => f.id === id);
+  const getFac = (id?: string) => facultyList.find(f => f.id === id || f.name === id);
   const getSec = (id?: string) => sections.find(s => s.id === id);
 
   const currentSubj = getSubj(statusInfo.currentEntry?.subjectId);

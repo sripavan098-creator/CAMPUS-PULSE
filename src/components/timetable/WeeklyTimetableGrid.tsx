@@ -23,7 +23,7 @@ export const WeeklyTimetableGrid: React.FC<WeeklyTimetableGridProps> = ({
   const { subjects, faculty: facultyList, rooms, buildings, sections } = useLookups();
 
   const getSubj = (id: string) => subjects.find(s => s.id === id);
-  const getFac = (id: string) => facultyList.find(f => f.id === id);
+  const getFac = (id: string) => facultyList.find(f => f.id === id || f.name === id);
   const getRoom = (id: string) => rooms.find(r => r.id === id);
   const getBldg = (id: string) => buildings.find(b => b.id === id);
   const getSec = (id: string) => sections.find(s => s.id === id);

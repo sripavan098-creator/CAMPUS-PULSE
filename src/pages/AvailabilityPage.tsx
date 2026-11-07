@@ -128,7 +128,7 @@ export const AvailabilityPage: React.FC = () => {
           departmentName: dept?.name || 'General Academic',
           currentActivity: isOccupied && overlapping ? {
             subjectName: overlapping.subjectId,
-            facultyName: overlapping.facultyId,
+            facultyName: faculty.find(f => f.id === overlapping.facultyId)?.name || overlapping.facultyId,
             sectionName: overlapping.sectionId,
             startTime: overlapping.startTime,
             endTime: overlapping.endTime

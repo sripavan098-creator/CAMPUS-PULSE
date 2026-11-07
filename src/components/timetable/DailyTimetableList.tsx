@@ -21,7 +21,7 @@ export const DailyTimetableList: React.FC<DailyTimetableListProps> = ({
   const { subjects, faculty: facultyList, rooms, buildings, floors, sections } = useLookups();
 
   const getSubj = (id: string) => subjects.find(s => s.id === id);
-  const getFac = (id: string) => facultyList.find(f => f.id === id);
+  const getFac = (id: string) => facultyList.find(f => f.id === id || f.name === id);
   const getRoom = (id: string) => rooms.find(r => r.id === id);
   const getBldg = (id: string) => buildings.find(b => b.id === id);
   const getFlr = (id: string) => floors.find(f => f.id === id);

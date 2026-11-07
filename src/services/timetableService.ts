@@ -180,7 +180,7 @@ export const timetableService = {
     const getFlrName = (fId?: string) => floors.find(f => f.id === fId)?.name || 'Floor';
     const getDeptName = (dId?: string) => departments.find(d => d.id === dId)?.name || 'Department';
     const getSubjName = (sId?: string) => subjects.find(s => s.id === sId)?.name || 'Academic Class';
-    const getFacName = (fId?: string) => facultyList.find(f => f.id === fId)?.name || 'Faculty Member';
+    const getFacName = (fId?: string) => facultyList.find(f => f.id === fId || f.name === fId)?.name || 'Faculty Member';
     const getSecName = (secId?: string) => sections.find(s => s.id === secId)?.name || 'Section';
 
     // 1. CLASSROOMS & LABORATORIES
