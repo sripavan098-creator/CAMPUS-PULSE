@@ -473,6 +473,54 @@ router.get('/buildings/:id', async (req: Request, res: Response) => {
   })
 })
 
+/**
+ * Lays rooms out on a deterministic grid and returns the 2D blueprint the SPA
+ * draws. Coordinates are percentages of the drawing canvas. The raw workbook
+ * carries no geometry, so every floor gets a demo layout derived from its room
+ * list; the client renders it verbatim.
+ */
+function buildBlueprintElements(
+  floorNumber: number,
+  rooms: Array<{ id: string; type: string }>
+) {
+  const elements: Array<Record<string, unknown>> = []
+  const cols = 4
+  const rows = Math.max(1, Math.ceil(rooms.length / cols))
+  const marginX = 6
+  const gap = 3
+  const cellW = (100 - marginX * 2 - gap * (cols - 1)) / cols
+  const top = 12
+  const bottom = 95
+  const cellH = (bottom - top - gap * (rows - 1)) / rows
+
+  // Common facilities occupy a fixed strip above the room grid so they never
+  // overlap a classroom tile.
+  elements.push({ id: 'bp-corridor', name: 'Corridor', label: 'CORRIDOR', type: 'corridor', x: 6, y: 2, width: 58, height: 7 })
+  elements.push({ id: 'bp-lift', name: 'Lift', label: 'LIFT', type: 'lift', x: 66, y: 2, width: 10, height: 7 })
+  elements.push({ id: 'bp-stairs', name: 'Staircase', label: 'STAIRS', type: 'staircase', x: 78, y: 2, width: 10, height: 7 })
+  if (floorNumber === 0) {
+    elements.push({ id: 'bp-entrance', name: 'Main Entrance', label: 'ENTRANCE', type: 'entrance', x: 90, y: 2, width: 6, height: 7 })
+  }
+
+  rooms.forEach((room, i) => {
+    const row = Math.floor(i / cols)
+    const col = i % cols
+    elements.push({
+      id: `bp-${room.id}`,
+      roomId: room.id,
+      name: `Room ${room.id}`,
+      label: room.id,
+      type: normalizeRoomType(room.type),
+      x: marginX + col * (cellW + gap),
+      y: top + row * (cellH + gap),
+      width: cellW,
+      height: cellH
+    })
+  })
+
+  return elements
+}
+
 // GET /api/floors
 router.get('/floors', async (req: Request, res: Response) => {
   const { buildingId } = req.query as { buildingId?: string }
@@ -486,7 +534,10 @@ router.get('/floors', async (req: Request, res: Response) => {
     buildingId: f.blockId,
     floorNumber: f.number,
     name: f.label,
-    roomIds: f.rooms.map(r => r.id)
+    blueprintDemo: true,
+    facilities: [],
+    roomIds: f.rooms.map(r => r.id),
+    blueprintElements: buildBlueprintElements(f.number, f.rooms)
   })))
 })
 
@@ -576,7 +627,7 @@ function toTimetableEntry(e: {
     yearOfStudy: e.group?.year || 2,
     sectionId: e.group?.name || e.groupId || '',
     subjectId: e.subject || '',
-    facultyId: e.faculty?.name || e.facultyId || '',
+    facultyId: e.facultyId || e.faculty?.name || '',
     buildingId: e.room?.blockId || '',
     floorId: e.room?.floorId || '',
     roomId: e.roomId || '',

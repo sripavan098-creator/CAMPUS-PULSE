@@ -214,6 +214,15 @@ export const RoleLoginPage: React.FC<RoleLoginPageProps> = ({ role }) => {
             </button>
           </form>
 
+          {role === 'student' && (
+            <p className="mt-5 text-center text-xs text-slate-500">
+              New student?{' '}
+              <Link to="/signup/student" className="font-bold text-purple-700 hover:underline">
+                Create your account
+              </Link>
+            </p>
+          )}
+
           {/* Quick Switch to Other Roles */}
           <div className="pt-6 mt-6 border-t border-slate-100 text-center">
             <span className="text-xs text-slate-400 block mb-2">Switch access role:</span>

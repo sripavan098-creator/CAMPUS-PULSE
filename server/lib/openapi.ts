@@ -370,6 +370,149 @@ export const openApiSpec = {
         },
       },
     },
+    '/auth/signup/student': {
+      post: {
+        summary: 'Student self-registration',
+        description: 'Creates a student account and enrols it in an existing section. Returns the created user.',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name', 'rollNumber', 'email', 'password', 'section'],
+                properties: {
+                  name: { type: 'string' },
+                  rollNumber: { type: 'string', example: '211FA04001' },
+                  email: { type: 'string', format: 'email' },
+                  password: { type: 'string', minLength: 10 },
+                  section: { type: 'string', example: 'II AIML-J' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Account created' },
+          '400': { description: 'Validation error or unknown section' },
+          '409': { description: 'Email already registered' },
+        },
+      },
+    },
+    '/auth/change-password': {
+      post: {
+        summary: 'Change the current account password',
+        description: 'Rotates the password. Admin-provisioned accounts must call this before any other route is reachable.',
+        security: [{ CookieAuth: [] }, { BearerAuth: [] }, { CsrfHeader: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['currentPassword', 'newPassword'],
+                properties: {
+                  currentPassword: { type: 'string' },
+                  newPassword: { type: 'string', minLength: 10 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Password updated' },
+          '401': { description: 'Current password incorrect' },
+        },
+      },
+    },
+    '/faculty/me/swap-candidates': {
+      get: {
+        summary: 'Swap targets for one of your periods',
+        security: [{ CookieAuth: [] }, { BearerAuth: [] }],
+        parameters: [{ name: 'entryId', in: 'query', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Same-section periods owned by other faculty' },
+          '403': { description: 'Period does not belong to the caller' },
+        },
+      },
+    },
+    '/faculty/me/replacement-candidates': {
+      get: {
+        summary: 'Free same-section faculty for a period',
+        security: [{ CookieAuth: [] }, { BearerAuth: [] }],
+        parameters: [{ name: 'entryId', in: 'query', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Faculty who can take the period' },
+        },
+      },
+    },
+    '/faculty/me/requests': {
+      get: {
+        summary: 'List your incoming and outgoing schedule requests',
+        security: [{ CookieAuth: [] }, { BearerAuth: [] }],
+        responses: {
+          '200': { description: 'Incoming (pending) and outgoing requests' },
+        },
+      },
+    },
+    '/faculty/me/requests/swap': {
+      post: {
+        summary: 'Raise a swap request',
+        security: [{ CookieAuth: [] }, { BearerAuth: [] }, { CsrfHeader: [] }],
+        responses: {
+          '201': { description: 'Request created' },
+          '403': { description: 'Source period not owned by the caller' },
+          '409': { description: 'Swap would create a conflict' },
+        },
+      },
+    },
+    '/faculty/me/requests/replace': {
+      post: {
+        summary: 'Raise a replacement request',
+        security: [{ CookieAuth: [] }, { BearerAuth: [] }, { CsrfHeader: [] }],
+        responses: {
+          '201': { description: 'Request created' },
+          '400': { description: 'Substitute does not teach the section' },
+        },
+      },
+    },
+    '/faculty/me/requests/{id}/{decision}': {
+      post: {
+        summary: 'Accept or reject a schedule request',
+        security: [{ CookieAuth: [] }, { BearerAuth: [] }, { CsrfHeader: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'decision', in: 'path', required: true, schema: { type: 'string', enum: ['accept', 'reject'] } },
+        ],
+        responses: {
+          '200': { description: 'Decision recorded' },
+          '403': { description: 'Request is not aimed at the caller' },
+          '409': { description: 'Slot is no longer free' },
+        },
+      },
+    },
+    '/admin/schedule-requests': {
+      get: {
+        summary: 'List schedule requests for oversight',
+        security: [{ CookieAuth: [] }, { BearerAuth: [] }],
+        parameters: [{ name: 'status', in: 'query', required: false, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Requests, filtered by status when provided' },
+        },
+      },
+    },
+    '/admin/schedule-requests/{id}/override': {
+      post: {
+        summary: 'Force a decision on a pending request',
+        security: [{ CookieAuth: [] }, { BearerAuth: [] }, { CsrfHeader: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Request decided and applied' },
+          '409': { description: 'Already decided or slot conflict' },
+        },
+      },
+    },
     '/admin/proposals/{id}/approve': {
       post: {
         summary: 'Approve repair proposal',

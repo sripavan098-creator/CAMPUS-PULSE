@@ -18,6 +18,8 @@ import { NotFoundPage } from './pages/NotFoundPage';
 // Auth Pages
 import { RoleSelectLoginPage } from './pages/auth/RoleSelectLoginPage';
 import { RoleLoginPage } from './pages/auth/RoleLoginPage';
+import { StudentSignupPage } from './pages/auth/StudentSignupPage';
+import { ChangePasswordPage } from './pages/auth/ChangePasswordPage';
 
 // Student Pages
 import { StudentDashboard } from './dashboards/student/StudentDashboard';
@@ -29,6 +31,7 @@ import { StudentNotificationsPage } from './dashboards/student/StudentNotificati
 import { FacultyDashboard } from './dashboards/faculty/FacultyDashboard';
 import { FacultyAvailabilityPage } from './dashboards/faculty/FacultyAvailabilityPage';
 import { FacultyChangesPage } from './dashboards/faculty/FacultyChangesPage';
+import { FacultySwapPage } from './dashboards/faculty/FacultySwapPage';
 
 // Admin Pages
 import { AdminDashboard } from './dashboards/admin/AdminDashboard';
@@ -41,6 +44,7 @@ import { FloorManager } from './dashboards/admin/FloorManager';
 import { ClassroomManager } from './dashboards/admin/ClassroomManager';
 import { LaboratoryManager } from './dashboards/admin/LaboratoryManager';
 import { FacultyManager } from './dashboards/admin/FacultyManager';
+import { AdminScheduleRequestsPage } from './dashboards/admin/AdminScheduleRequestsPage';
 import { StudentManager } from './dashboards/admin/StudentManager';
 import { AdminReportsPage } from './dashboards/admin/AdminReportsPage';
 import { AdminSettingsPage } from './dashboards/admin/AdminSettingsPage';
@@ -74,6 +78,8 @@ const AppRoutes: React.FC = () => {
       <Route path="/login/admin" element={<RoleLoginPage role="admin" />} />
       <Route path="/login/faculty" element={<RoleLoginPage role="faculty" />} />
       <Route path="/login/student" element={<RoleLoginPage role="student" />} />
+      <Route path="/signup/student" element={<StudentSignupPage />} />
+      <Route path="/change-password" element={<ChangePasswordPage />} />
 
       {/* STUDENT DASHBOARD ROUTES */}
       <Route path="/student" element={<DashboardLayout requiredRole="student" />}>
@@ -91,6 +97,7 @@ const AppRoutes: React.FC = () => {
         <Route path="timetable" element={<FacultyDashboard />} />
         <Route path="availability" element={<FacultyAvailabilityPage />} />
         <Route path="changes" element={<FacultyChangesPage />} />
+        <Route path="swap" element={<FacultySwapPage />} />
         <Route path="profile" element={<StudentProfilePage />} />
         <Route path="notifications" element={<StudentNotificationsPage />} />
       </Route>
@@ -104,6 +111,7 @@ const AppRoutes: React.FC = () => {
         <Route path="departments" element={<DepartmentManager />} />
         <Route path="timetable" element={<TimetableManager />} />
         <Route path="faculty" element={<FacultyManager />} />
+        <Route path="swap-requests" element={<AdminScheduleRequestsPage />} />
         <Route path="students" element={<StudentManager />} />
         <Route path="buildings" element={<BuildingManager />} />
         <Route path="floors" element={<FloorManager />} />

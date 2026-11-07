@@ -10,6 +10,7 @@ export interface AuthRequest extends Request {
     name: string
     group: string | null
     facultyId: string | null
+    mustChangePassword: boolean
   }
   isBearerAuth?: boolean
 }
@@ -77,8 +78,27 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
     name: user.name,
     group: user.group,
     facultyId: user.facultyId,
+    mustChangePassword: user.mustChangePassword,
   }
   req.isBearerAuth = isBearer
+
+  // An admin-provisioned faculty account must rotate its temporary password
+  // before it can reach anything else. These three routes stay open so the
+  // client can rotate the password, read its own identity, or log out.
+  if (user.mustChangePassword) {
+    const allowed = ['/api/auth/change-password', '/api/auth/me', '/api/auth/logout']
+    const path = req.baseUrl + req.path
+    if (!allowed.includes(path)) {
+      res.status(403).json({
+        error: {
+          code: 'PASSWORD_CHANGE_REQUIRED',
+          message: 'You must change your temporary password before continuing.'
+        }
+      })
+      return
+    }
+  }
+
   next()
 }
 

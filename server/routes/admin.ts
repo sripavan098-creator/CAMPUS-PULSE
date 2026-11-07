@@ -7,9 +7,11 @@ import multer from 'multer'
 import fs from 'fs'
 import crypto from 'crypto'
 import { z } from 'zod'
+import bcrypt from 'bcryptjs'
 import { findRepairOptions, verifyHardConstraints, CandidateRoom, ConstraintCheckResult } from '../../src/engine/repairSearch.js'
 import { ScheduledEntry, DisruptionRecord } from '../../src/engine/intervalSearch.js'
 import { parseWorkbook } from '../lib/timetableParser.js'
+import { applyScheduleRequest } from '../lib/scheduleRequests.js'
 
 const router = Router()
 router.use(requireAuth)
@@ -895,14 +897,78 @@ router.get('/faculty', async (_req: Request, res: Response) => {
   res.json({ faculty })
 })
 
+const FacultyCreateSchema = z.object({
+  code: z.string().min(2, 'Faculty code is required'),
+  name: z.string().min(2, 'Faculty name is required'),
+  departmentId: z.string().optional(),
+  is_mock: z.boolean().optional(),
+  // Optional login provisioning. When `email` is supplied the faculty member
+  // also gets a User account with a temporary password they must rotate.
+  email: z.string().email().optional(),
+  tempPassword: z.string().min(10, 'Temporary password must be at least 10 characters').optional(),
+})
+
+// POST /api/admin/faculty - creates the Faculty record, and when an email is
+// supplied also the linked User login (role "faculty", must-change-on-first-login).
 router.post('/faculty', async (req: AuthRequest, res: Response) => {
-  const data = pickFields(req.body, FACULTY_FIELDS)
-  if (!data.code || !data.name) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Faculty code and name are required.' } })
+  const parsed = FacultyCreateSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0]?.message || 'Invalid faculty payload.' },
+    })
     return
   }
-  const faculty = await prisma.faculty.create({ data: data as { code: string; name: string } })
-  res.status(201).json({ faculty })
+
+  const { email, tempPassword, ...facultyFields } = parsed.data
+
+  if (email) {
+    const normalizedEmail = email.toLowerCase().trim()
+    const clash = await prisma.user.findUnique({ where: { email: normalizedEmail } })
+    if (clash) {
+      res.status(409).json({ error: { code: 'EMAIL_TAKEN', message: 'An account with this email already exists.' } })
+      return
+    }
+  }
+
+  const data = pickFields(facultyFields as Record<string, unknown>, FACULTY_FIELDS)
+
+  const result = await prisma.$transaction(async tx => {
+    const faculty = await tx.faculty.create({ data: data as { code: string; name: string } })
+
+    let user = null
+    if (email) {
+      user = await tx.user.create({
+        data: {
+          email: email.toLowerCase().trim(),
+          // Default temp password when the admin does not set one; the account
+          // is still forced to rotate it on first login.
+          password: await bcrypt.hash(tempPassword || `VFSTR@${faculty.code}2026`, 10),
+          role: 'faculty',
+          name: faculty.name,
+          facultyId: faculty.id,
+          mustChangePassword: true,
+        },
+          // Never return the password hash to the client.
+          select: { id: true, email: true, name: true, role: true, facultyId: true, mustChangePassword: true },
+        })
+    }
+
+    await tx.auditLog.create({
+      data: {
+        userId: req.user!.id,
+        action: 'admin.faculty.create',
+        entity: 'Faculty',
+        entityId: faculty.id,
+        detail: user
+          ? `Created faculty ${faculty.code} (${faculty.name}) with login ${user.email}`
+          : `Created faculty ${faculty.code} (${faculty.name}) without a login`,
+      },
+    })
+
+    return { faculty, user }
+  })
+
+  res.status(201).json({ faculty: result.faculty, user: result.user })
 })
 
 router.put('/faculty/:id', async (req: AuthRequest, res: Response) => {
@@ -997,6 +1063,84 @@ router.put('/blocks-crud/:id', async (req: AuthRequest, res: Response) => {
 router.delete('/blocks-crud/:id', async (req: AuthRequest, res: Response) => {
   await prisma.block.delete({ where: { id: String(req.params.id) } })
   res.json({ ok: true })
+})
+
+
+// ---------------------------------------------------------------------------
+// Schedule requests (faculty swap / replace) - admin oversight.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/schedule-requests
+router.get('/schedule-requests', async (req: Request, res: Response) => {
+  const status = req.query.status ? String(req.query.status) : undefined
+  const { skip, limit, page } = getPagination(req)
+
+  const where = status ? { status } : {}
+  const [requests, total] = await Promise.all([
+    prisma.scheduleRequest.findMany({
+      where,
+      include: {
+        requester: { select: { id: true, code: true, name: true } },
+        targetFaculty: { select: { id: true, code: true, name: true } },
+        sourceEntry: true,
+        targetEntry: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.scheduleRequest.count({ where }),
+  ])
+
+  res.json({ requests, total, page, limit })
+})
+
+const OverrideSchema = z.object({
+  decision: z.enum(['accept', 'reject']),
+})
+
+// POST /api/admin/schedule-requests/:id/override - admin forces a decision.
+router.post('/schedule-requests/:id/override', async (req: AuthRequest, res: Response) => {
+  const parsed = OverrideSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Decision must be accept or reject.' } })
+    return
+  }
+
+  const request = await prisma.scheduleRequest.findUnique({ where: { id: String(req.params.id) } })
+  if (!request) {
+    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Request not found.' } })
+    return
+  }
+  if (request.status !== 'pending') {
+    res.status(409).json({ error: { code: 'ALREADY_DECIDED', message: `This request is already ${request.status}.` } })
+    return
+  }
+
+  if (parsed.data.decision === 'reject') {
+    const rejected = await prisma.scheduleRequest.update({
+      where: { id: request.id },
+      data: { status: 'rejected', decidedAt: new Date(), decidedBy: req.user!.id },
+    })
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user!.id,
+        action: 'admin.schedule_request.override_reject',
+        entity: 'ScheduleRequest',
+        entityId: request.id,
+        detail: `Admin rejected ${request.type} request`,
+      },
+    })
+    res.json({ request: rejected })
+    return
+  }
+
+  const result = await applyScheduleRequest(request.id, req.user!.id)
+  if (!result.ok) {
+    res.status(409).json({ error: { code: result.code, message: 'The request could not be applied.' } })
+    return
+  }
+  res.json({ request: result.request })
 })
 
 export default router

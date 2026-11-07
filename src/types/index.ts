@@ -151,6 +151,8 @@ export interface TimetableEntry {
   yearOfStudy: number;
   sectionId: string;
   subjectId: string;
+  /** Raw subject label returned by the backend Entry rows. */
+  subject?: string;
   facultyId: string;
   buildingId: string;
   floorId: string;
@@ -241,4 +243,35 @@ export interface UserSession {
   facultyId?: string | null;
   avatarUrl?: string;
   token?: string;
+  /** Admin-provisioned accounts must rotate the temporary password first. */
+  mustChangePassword?: boolean;
+}
+
+export type ScheduleRequestType = 'swap' | 'replace';
+export type ScheduleRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+
+export interface ScheduleRequest {
+  id: string;
+  type: ScheduleRequestType;
+  status: ScheduleRequestStatus;
+  requesterId: string;
+  targetFacultyId?: string | null;
+  sourceEntryId: string;
+  targetEntryId?: string | null;
+  substituteFacultyId?: string | null;
+  reason?: string | null;
+  createdAt: string;
+  decidedAt?: string | null;
+  decidedBy?: string | null;
+  requester?: { id: string; code: string; name: string };
+  targetFaculty?: { id: string; code: string; name: string } | null;
+  sourceEntry?: TimetableEntry;
+  targetEntry?: TimetableEntry | null;
+}
+
+export interface FacultySummary {
+  id: string;
+  code: string;
+  name: string;
+  departmentId?: string | null;
 }

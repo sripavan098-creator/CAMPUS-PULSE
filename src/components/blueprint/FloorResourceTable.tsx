@@ -40,7 +40,7 @@ export const FloorResourceTable: React.FC<FloorResourceTableProps> = ({
   const { departments, subjects, faculty: facultyList, sections } = useLookups();
 
   const getSubj = (id?: string) => subjects.find(s => s.id === id);
-  const getFac = (id?: string) => facultyList.find(f => f.id === id);
+  const getFac = (id?: string) => facultyList.find(f => f.id === id || f.name === id);
   const getSec = (id?: string) => sections.find(s => s.id === id);
 
   // Compute status for all floor rooms

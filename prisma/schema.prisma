@@ -17,6 +17,9 @@ model User {
   faculty      Faculty?  @relation(fields: [facultyId], references: [id])
   group        String?   // e.g. "II AIML-J" for student
   is_demo      Boolean   @default(false)
+  // Admin-provisioned faculty logins force a password change before any
+  // other route is usable.
+  mustChangePassword Boolean @default(false)
   lockedUntil  DateTime? // 15-minute lockout after 5 failed attempts
   createdAt    DateTime  @default(now())
   sessions     Session[]
@@ -111,6 +114,8 @@ model Faculty {
   department   Department? @relation(fields: [departmentId], references: [id])
   entries      Entry[]
   user         User?   // via facultyId on User
+  requestsAsRequester ScheduleRequest[] @relation("RequesterRequests")
+  requestsAsTarget    ScheduleRequest[] @relation("TargetRequests")
 
   @@index([departmentId])
 }
@@ -146,6 +151,8 @@ model Entry {
   faculty      Faculty? @relation(fields: [facultyId], references: [id])
   room         Room?    @relation(fields: [roomId], references: [id])
   disruptions  Disruption[]
+  sourceRequests ScheduleRequest[] @relation("SourceRequests")
+  targetRequests ScheduleRequest[] @relation("TargetRequests")
 
   @@index([roomId, day, startTime])
   @@index([facultyId, day, startTime])
@@ -237,3 +244,26 @@ model Semester {
 
   @@index([academicYearId])
 }
+
+  model ScheduleRequest {
+    id                  String   @id @default(cuid())
+    type                String   // "swap" | "replace"
+    status              String   @default("pending") // "pending"|"accepted"|"rejected"|"cancelled"
+    requesterId         String   // Faculty.id of the faculty asking
+    targetFacultyId     String?  // Faculty.id who must accept (swap counterpart / substitute)
+    sourceEntryId       String   // Entry.id the requester is giving up
+    targetEntryId       String?  // Entry.id the requester takes (swap only)
+    substituteFacultyId String?  // Faculty.id who takes the period (replace only)
+    reason              String?
+    createdAt           DateTime @default(now())
+    decidedAt           DateTime?
+    decidedBy           String?  // User.id of whoever accepted/rejected
+    requester           Faculty  @relation("RequesterRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+    targetFaculty       Faculty? @relation("TargetRequests", fields: [targetFacultyId], references: [id], onDelete: SetNull)
+    sourceEntry         Entry    @relation("SourceRequests", fields: [sourceEntryId], references: [id], onDelete: Cascade)
+    targetEntry         Entry?   @relation("TargetRequests", fields: [targetEntryId], references: [id], onDelete: SetNull)
+
+    @@index([status])
+    @@index([requesterId])
+    @@index([targetFacultyId])
+  }

@@ -14,6 +14,8 @@ import {
   TimetableEntry,
   TimetableChange,
   UserNotification,
+  ScheduleRequest,
+  FacultySummary,
   UserSession,
   Role,
   DayOfWeek
@@ -193,6 +195,86 @@ export const apiService = {
 
   async getConflicts(): Promise<any> {
     return apiClient.get<any>('/api/admin/conflicts', { requiresAuth: true });
+  },
+
+  // ==================== ACCOUNTS ====================
+  async signupStudent(payload: {
+    name: string;
+    rollNumber: string;
+    email: string;
+    password: string;
+    section: string;
+  }): Promise<UserSession> {
+    const res = await apiClient.post<{ user: UserSession }>('/api/auth/signup/student', payload, {
+      requiresAuth: false
+    });
+    return res.user;
+  },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await apiClient.post('/api/auth/change-password', { currentPassword, newPassword });
+  },
+
+  async createFaculty(payload: {
+    code: string;
+    name: string;
+    departmentId?: string;
+    email?: string;
+    tempPassword?: string;
+  }): Promise<{ faculty: any; user: any }> {
+    return apiClient.post<{ faculty: any; user: any }>('/api/admin/faculty', payload);
+  },
+
+  // ==================== FACULTY SWAP & REPLACE ====================
+  async getSwapCandidates(entryId: string): Promise<{ entry: TimetableEntry; candidates: any[] }> {
+    return apiClient.get(`/api/faculty/me/swap-candidates?entryId=${encodeURIComponent(entryId)}`);
+  },
+
+  async getReplacementCandidates(entryId: string): Promise<{ entry: TimetableEntry; candidates: FacultySummary[] }> {
+    return apiClient.get(`/api/faculty/me/replacement-candidates?entryId=${encodeURIComponent(entryId)}`);
+  },
+
+  async requestSwap(sourceEntryId: string, targetEntryId: string): Promise<ScheduleRequest> {
+    const res = await apiClient.post<{ request: ScheduleRequest }>('/api/faculty/me/requests/swap', {
+      sourceEntryId,
+      targetEntryId
+    });
+    return res.request;
+  },
+
+  async requestReplace(sourceEntryId: string, substituteFacultyId: string, reason?: string): Promise<ScheduleRequest> {
+    const res = await apiClient.post<{ request: ScheduleRequest }>('/api/faculty/me/requests/replace', {
+      sourceEntryId,
+      substituteFacultyId,
+      reason
+    });
+    return res.request;
+  },
+
+  async getScheduleRequests(): Promise<{ incoming: ScheduleRequest[]; outgoing: ScheduleRequest[] }> {
+    return apiClient.get('/api/faculty/me/requests');
+  },
+
+  async decideScheduleRequest(id: string, decision: 'accept' | 'reject'): Promise<ScheduleRequest> {
+    const res = await apiClient.post<{ request: ScheduleRequest }>(
+      `/api/faculty/me/requests/${encodeURIComponent(id)}/${decision}`,
+      {}
+    );
+    return res.request;
+  },
+
+  // ==================== ADMIN: SCHEDULE REQUESTS ====================
+  async getAdminScheduleRequests(status?: string): Promise<{ requests: ScheduleRequest[]; total: number }> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    return apiClient.get(`/api/admin/schedule-requests${query}`);
+  },
+
+  async overrideScheduleRequest(id: string, decision: 'accept' | 'reject'): Promise<ScheduleRequest> {
+    const res = await apiClient.post<{ request: ScheduleRequest }>(
+      `/api/admin/schedule-requests/${encodeURIComponent(id)}/override`,
+      { decision }
+    );
+    return res.request;
   },
 
   // ==================== ADMIN CRUD ====================
