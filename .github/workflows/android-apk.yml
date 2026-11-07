@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       # The runner ships the Android SDK already; only the API 36 platform
       # (compileSdk in android/variables.gradle) needs adding.
