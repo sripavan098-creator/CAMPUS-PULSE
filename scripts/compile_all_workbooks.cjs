@@ -27,9 +27,16 @@ const {
   splitSubjectFaculty,
   cleanFacultyName
 } = require('./lib/parseHelpers.cjs');
+const { loadMaster, sheetsOf } = require('./lib/masterDump.cjs');
+const { parseStreamSheet, sectionLabel, branchToDepartment } = require('./lib/streamParser.cjs');
 
 const rawDir = path.join(__dirname, '../server/data/raw_workbooks');
 const dataDir = path.join(__dirname, '../server/data');
+
+const X_STREAM_FILE = '5008ed3b-V3_Updated-2026_X_Stream_I_B.Tech_I_Sem__w.e.f_13.08.26.xlsx';
+const Y_STREAM_FILE = 'b2f20592-V3_Updated-2026_Y_Stream_I_B.Tech_I_Sem__w.e.f_13.08.26.xlsx';
+const DIV4_FILE = 'dbe3ca65-Master_TT_Division_4-w.e.f_22.10.26_12_.xlsx';
+const master = loadMaster(rawDir);
 
 const DEPARTMENTS = [
   { id: 'dept-acse', code: 'ACSE', name: 'Department of Advanced Computer Science and Engineering' },
@@ -37,7 +44,12 @@ const DEPARTMENTS = [
   { id: 'dept-cse', code: 'CSE', name: 'Department of Computer Science and Engineering' },
   { id: 'dept-sash', code: 'SASH', name: 'School of Applied Science & Humanities' },
   { id: 'dept-bi', code: 'BIOINFO', name: 'Department of Bioinformatics' },
-  { id: 'dept-bt', code: 'BT', name: 'Department of Biotechnology' }
+  { id: 'dept-bt', code: 'BT', name: 'Department of Biotechnology' },
+  { id: 'dept-aiml', code: 'AIML', name: 'Artificial Intelligence & Machine Learning' },
+  { id: 'dept-eee', code: 'EEE', name: 'Electrical and Electronics Engineering' },
+  { id: 'dept-mech', code: 'MECH', name: 'Mechanical Engineering' },
+  { id: 'dept-civil', code: 'CIVIL', name: 'Civil Engineering' },
+  { id: 'dept-it', code: 'IT', name: 'Information Technology' }
 ];
 
 const groups = [];
@@ -314,8 +326,18 @@ try {
 
 // ----------------------------------------------------------------- SASH ----
 try {
-  const wb = XLSX.readFile(path.join(rawDir, 'sash_division_4.xlsx'));
-  let count = 0;
+    const wb = XLSX.readFile(path.join(rawDir, 'sash_division_4.xlsx'));
+    let count = 0;
+
+    // Division 4 sheets carry the branch in the section header ("SECTION - 30 (AIML)").
+    const sashDept = {};
+    for (const name of wb.SheetNames) {
+      const grid = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1 });
+      const head = String((grid && grid[0] && grid[0][0]) || '');
+      const m = head.match(/SECTION\s*[-\u2013]?\s*\d+\s*\(([^)]*)\)/i);
+      const dept = m ? branchToDepartment(m[1]) : null;
+      if (dept) sashDept[name.replace(/^New\s+/, '').trim()] = dept;
+    }
 
   for (const sheetName of wb.SheetNames) {
     const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
@@ -323,7 +345,7 @@ try {
 
     const sectionLabel = sheetName.replace(/^New\s+/, '').trim();
     const groupName = `I SASH SEC-${sectionLabel}`;
-    addGroup(groupName, 1, 'SASH', `SEC-${sectionLabel}`);
+    addGroup(groupName, 1, sashDept[sectionLabel] || 'SASH', `SEC-${sectionLabel}`);
 
     const { headerRow, colTimes } = findTimeColumns(grid, 6);
     if (headerRow === -1) continue;
@@ -354,6 +376,39 @@ try {
   console.log(`SASH: 15 groups, ${count} entries`);
 } catch (e) {
   console.error('SASH: parse failed -', e.message);
+}
+
+// ------------------------------------- SASH X-Stream and Y-Stream (year I) ----
+// These two source workbooks are no longer in the repository, so their contents
+// are recovered from the master cell dump. Division 4 (22.10.26) reissues some
+// of the same sections with a different timetable and owns them where it does.
+try {
+  const div4Sections = new Set();
+  for (const entry of master.bySheet.values()) {
+    if (entry.file === DIV4_FILE) div4Sections.add(entry.sheet.replace(/^New\s+/, '').trim());
+  }
+
+  for (const [file, streamCode] of [[X_STREAM_FILE, 'X'], [Y_STREAM_FILE, 'Y']]) {
+    let count = 0;
+    for (const sheet of sheetsOf(master, file)) {
+      const label = sectionLabel(sheet.rows);
+      if (!label || div4Sections.has(label.number)) continue; // Division 4 supersedes
+
+      const { entries: parsed, rooms: usedRooms } = parseStreamSheet(sheet.rows, master.catalogue);
+      if (!parsed.length) continue;
+
+      const groupName = `I ${streamCode} SEC-${label.number}`;
+      addGroup(groupName, 1, branchToDepartment(label.stream) || 'SASH', `SEC-${label.number}`);
+      for (const r of usedRooms) rooms.add(r);
+      for (const e of parsed) {
+        addEntry(groupName, e.day, e.startTime, e.endTime, e.subject, e.room, e.faculty, e.entryType);
+        count++;
+      }
+    }
+    console.log(`SASH ${streamCode}-Stream: ${count} entries`);
+  }
+} catch (e) {
+  console.error('SASH streams: parse failed -', e.message);
 }
 
 // ------------------------------------------------------- BT and BIOINFO ----
@@ -430,6 +485,11 @@ const cleanRooms = Array.from(new Set(
   Array.from(rooms).map(r => r.trim().toUpperCase())
     .filter(r => r && r !== 'MOBILE' && r.length < 30)
 )).sort();
+
+// Each entry carries the owning department so the seed can attribute a faculty
+// member to the branch they actually teach for, rather than to a default.
+const groupDepartment = new Map(groups.map(g => [g.name, g.departmentCode]));
+for (const e of entries) e.departmentCode = groupDepartment.get(e.group) || null;
 
 const output = { departments: DEPARTMENTS, groups, rooms: cleanRooms, entries };
 const namedFaculty = new Set(entries.map(e => e.faculty).filter(Boolean));

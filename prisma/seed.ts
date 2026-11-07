@@ -380,18 +380,20 @@ async function main() {
     // people per slot; the first name is used as the primary instructor and
     // generic labels like "CSE Faculty (CN)" stay unlinked.
     const facultyIdByName = new Map<string, string>()
+    const facultyDepartmentByName = new Map<string, string>()
     let facultyCount = 0
-    const facultyIdFor = async (raw: string | null | undefined): Promise<string | null> => {
+    const facultyIdFor = async (raw: string | null | undefined, departmentId?: string | null): Promise<string | null> => {
       if (!raw) return null
       const primary = raw.split(/[,;]/)[0].replace(/\s+/g, ' ').trim().replace(/[.]+$/, '')
       if (!primary || /faculty/i.test(primary) || primary.length < 4) return null
+      if (departmentId && !facultyDepartmentByName.has(primary)) facultyDepartmentByName.set(primary, departmentId)
       const cached = facultyIdByName.get(primary)
       if (cached) return cached
       const code = `fac-${primary.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}`
       const rec = await prisma.faculty.upsert({
         where: { code },
-        update: { name: primary },
-        create: { code, name: primary }
+        update: { name: primary, departmentId: departmentId || null },
+        create: { code, name: primary, departmentId: departmentId || null }
       })
       facultyIdByName.set(primary, rec.id)
       facultyCount++
@@ -425,7 +427,7 @@ async function main() {
           sourceFileId: sourceFile.id,
           groupId: gId,
           roomId,
-          facultyId: await facultyIdFor(entry.faculty),
+          facultyId: await facultyIdFor(entry.faculty, entry.departmentCode ? deptMap.get(entry.departmentCode) : null),
           day: entry.day,
           startTime: entry.startTime,
           endTime: entry.endTime,
