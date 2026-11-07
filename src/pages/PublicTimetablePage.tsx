@@ -77,7 +77,13 @@ export const PublicTimetablePage: React.FC = () => {
       const defaultDept = depts[0]?.id || '';
       const defaultAy = ays.find(y => y.isActive)?.id || ays[0]?.id || '';
       const defaultSem = sems.find(s => s.isActive)?.id || sems[0]?.id || '';
-      const defaultSec = secs.find(s => s.departmentId === defaultDept)?.id || secs[0]?.id || '';
+      // The year-of-study selector defaults to 3, so pick a section that matches
+      // it. Otherwise the dropdown shows one section while the grid loads another.
+      const defaultSec =
+        secs.find(s => s.departmentId === defaultDept && s.yearOfStudy === 3)?.id ||
+        secs.find(s => s.departmentId === defaultDept)?.id ||
+        secs[0]?.id ||
+        '';
 
       setSelectedDeptId(defaultDept);
       setSelectedYearId(defaultAy);
